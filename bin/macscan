@@ -53,7 +53,9 @@ source "${LIB_DIR}/scan/clamav.sh"
 cleanup_on_exit() {
     show_cursor
     # Stop any running spinner
-    [[ -n "${_SPINNER_PID:-}" ]] && kill -TERM "$_SPINNER_PID" 2>/dev/null || true
+    if [[ -n "${_SPINNER_PID:-}" ]]; then
+        kill -TERM "$_SPINNER_PID" 2>/dev/null || true
+    fi
 }
 
 # Trap signals to ensure cleanup
