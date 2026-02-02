@@ -66,6 +66,9 @@ brew install clamav
 ## 🚀 Quick Start
 
 ```bash
+# Interactive mode (TUI menu)
+ms
+
 # Quick scan (common threat locations)
 ms scan
 
@@ -96,9 +99,49 @@ ms whitelist add ~/safe-folder
 
 # Manage quarantined files
 ms quarantine list
+ms quarantine restore <id>
+
+# Uninstall MacScan
+ms remove
+
+# Show version and author info
+ms version
+ms author
 
 # Show help
 ms help
+```
+
+## 🎮 Interactive Mode
+
+Run `ms` without any arguments to launch the interactive menu:
+
+```bash
+ms
+```
+
+This opens a TUI with arrow key navigation:
+
+```
+ __  __            ____
+|  \/  | __ _  ___/ ___|  ___ __ _ _ __
+| |\/| |/ _` |/ __\___ \ / __/ _` | '_ \
+| |  | | (_| | (__ ___) | (_| (_| | | | |
+|_|  |_|\__,_|\___|____/ \___\__,_|_| |_|
+
+  https://github.com/artcc/macscan
+  Command-line malware scanner for macOS
+
+  ▶ 1. Quick Scan    Scan common threat locations
+    2. Full Scan     Deep scan of your entire system
+    3. Scan Path     Scan a specific directory
+    4. Update        Update virus database signatures
+    5. Status        Show system status and last scan
+    6. Quarantine    Manage quarantined files
+    7. Whitelist     Manage excluded paths
+
+  ─────────────────────────────────────────────
+  ↑↓ Navigate  Enter Select  H Help  V Version  A Author  Q Quit
 ```
 
 ## 📖 Commands
@@ -115,6 +158,7 @@ ms help
 | `ms remove` | Uninstall MacScan |
 | `ms help` | Show help information |
 | `ms version` | Show version information |
+| `ms author` | Show author information |
 
 ### Options
 
@@ -280,21 +324,15 @@ This will remove:
 - [x] Dry-run mode
 - [x] Signal handling (Ctrl+C safety)
 - [x] GitHub Actions CI
-- [ ] YARA rules integration
-- [ ] macOS-specific malware hashes (Objective-See)
-- [ ] Interactive TUI menu (with gum/fzf)
-- [ ] Homebrew tap
+- [x] Interactive TUI menu
 
 ### Phase 3 - Advanced
-- [ ] Real-time monitoring (fswatch)
+- [ ] Homebrew tap
 - [ ] Scheduled scans (launchd)
-- [ ] Detailed HTML reports
 - [ ] VirusTotal API integration
-
-### Phase 4 - Community
+- [ ] YARA rules integration
+- [ ] macOS-specific malware hashes (Objective-See)
 - [ ] Community rule contributions
-- [ ] VirusTotal API integration
-- [ ] Plugin system
 
 ## 🤝 Contributing
 
