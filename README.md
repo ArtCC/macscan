@@ -266,10 +266,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 🙏 Acknowledgments
 
 - [ClamAV](https://www.clamav.net/) - Open source antivirus engine
@@ -280,8 +276,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 MacScan is provided as-is without warranty. While it uses ClamAV's virus database, no antivirus solution is 100% effective. Always practice safe computing habits and keep your system updated.
 
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
 ---
 
-<p align="center">
-  Made with ❤️ for the macOS community
+<p align="left">
+  <sub>Made with ❤️ for the macOS community</sub><br>
+  <sub>100% built with GitHub Copilot (Claude Opus 4.5)</sub><br>
+  <sub>Arturo Carretero Calvo — 2026</sub>
 </p>
