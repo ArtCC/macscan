@@ -9,10 +9,13 @@ _macscan_completions() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     
     # Main commands
-    commands="scan update status quarantine remove help version"
+    commands="scan update status quarantine whitelist remove help version author"
     
     # Global options
     global_opts="--help --version"
+    
+    # Whitelist actions
+    whitelist_actions="list add remove edit help"
     
     # Scan options
     scan_opts="-p --path -f --full -v --verbose -q --quiet --dry-run --no-color --notify --export -h --help"
@@ -46,7 +49,16 @@ _macscan_completions() {
                 return 0
             fi
             ;;
-        update|status|remove|help|version)
+        whitelist)
+            if [[ ${COMP_CWORD} -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$whitelist_actions" -- "$cur") )
+                return 0
+            elif [[ ${COMP_CWORD} -eq 3 ]] && [[ "$prev" == "add" || "$prev" == "remove" ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            ;;
+        update|status|remove|help|version|author)
             COMPREPLY=( $(compgen -W "--help" -- "$cur") )
             return 0
             ;;

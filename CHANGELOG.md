@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **ClamAV auto-configuration**: Installer now creates freshclam.conf automatically
 - **Database initialization prompt**: Offers to run `ms update` at end of installation
-- **Improved Quick Scan UI**: Shows folder name, file count, and animated spinner per folder
+- **Real-time scan progress**: All scan modes now show spinner, file counter, and current file
 
 ### Fixed
 - Bash 3.2 compatibility: Fixed `read -t 0.1` (decimals not supported)
@@ -21,10 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed ClamAV `--max-depth` option not supported
 - Fixed help output showing raw escape codes
 - Fixed installer missing GRAY color variable
+- Fixed Full Scan and Path Scan not showing real-time progress
+- Fixed undefined variable `$_SCAN_THREATS_COUNT` in scan_directory
 
 ### Changed
 - ClamAV is now required (installer exits if user declines)
 - Cleaner installation flow with better prompts
+- Shell completions now include `whitelist` and `author` commands
 
 ## [0.0.2] - 2026-02-02
 

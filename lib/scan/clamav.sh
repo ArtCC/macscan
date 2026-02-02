@@ -348,7 +348,7 @@ scan_directory() {
     write_log "Scan completed: $scan_path - Files: $files_count, Threats: $threats_count"
     
     # Return based on threats found
-    [[ $_SCAN_THREATS_COUNT -eq 0 ]] && return 0 || return 1
+    [[ $threats_count -eq 0 ]] && return 0 || return 1
 }
 
 # Quick scan - scan common threat locations
@@ -450,7 +450,6 @@ quick_scan() {
                 printf "     ${GREEN}✓ Clean${NC} ${GRAY}(${files_in_path} scanned)${NC}\n"
             fi
             printf "\033[K\n"
-            printf "\r                                                                              \n"
         fi
     done
     
@@ -523,12 +522,25 @@ full_scan() {
     
     for path in "${FULL_SCAN_PATHS[@]}"; do
         if [[ -d "$path" ]]; then
-            # Count files in directory
-            local file_count
-            file_count=$(find "$path" -type f 2>/dev/null | wc -l | tr -d ' ')
+            # Start counting files in background for large directories
+            local file_count=""
+            local count_file=""
+            local count_pid=""
             
-            # Show what we're scanning
-            echo -e "  ${CYAN}${ICON_FOLDER}${NC} ${path} ${GRAY}(${file_count} files)${NC}"
+            if [[ "$path" == "$HOME" ]]; then
+                # Large directory - count in background while scanning
+                count_file=$(mktemp)
+                ( find "$path" -type f 2>/dev/null | wc -l | tr -d ' ' > "$count_file" ) &
+                count_pid=$!
+                echo -e "  ${CYAN}${ICON_FOLDER}${NC} ${path} ${GRAY}(counting in background...)${NC}"
+            else
+                # Smaller directories - count first (quick)
+                printf "  ${CYAN}${ICON_FOLDER}${NC} ${path} ${GRAY}(counting...)${NC}"
+                file_count=$(find "$path" -type f 2>/dev/null | wc -l | tr -d ' ')
+                printf "\r\033[K"
+                echo -e "  ${CYAN}${ICON_FOLDER}${NC} ${path} ${GRAY}(${file_count} files)${NC}"
+            fi
+            
             # Print 2 empty lines for progress area
             echo ""
             echo ""
@@ -546,6 +558,16 @@ full_scan() {
                     local status="${BASH_REMATCH[2]}"
                     ((files_in_path++))
                     
+                    # Check if background count finished
+                    if [[ -n "$count_pid" ]] && [[ -z "$file_count" ]]; then
+                        if ! kill -0 "$count_pid" 2>/dev/null; then
+                            # Count finished - read result
+                            file_count=$(cat "$count_file" 2>/dev/null)
+                            rm -f "$count_file"
+                            count_pid=""
+                        fi
+                    fi
+                    
                     # Get spinner char
                     local spin_char="${spin_chars:files_in_path%${#spin_chars}:1}"
                     
@@ -557,7 +579,11 @@ full_scan() {
                     
                     # Move up 2 lines, print spinner line with clear
                     printf "\033[2A\033[K"
-                    printf "     ${CYAN}%s${NC} Scanning... ${GRAY}[%d/%d]${NC}\n" "$spin_char" "$files_in_path" "$file_count"
+                    if [[ -n "$file_count" ]]; then
+                        printf "     ${CYAN}%s${NC} Scanning... ${GRAY}[%d/%d]${NC}\n" "$spin_char" "$files_in_path" "$file_count"
+                    else
+                        printf "     ${CYAN}%s${NC} Scanning... ${GRAY}[%d files]${NC}\n" "$spin_char" "$files_in_path"
+                    fi
                     # Print file line with clear
                     printf "\033[K     ${GRAY}%s${NC}\n" "$display_file"
                     
@@ -571,7 +597,16 @@ full_scan() {
                 fi
             done < <(clamscan "${full_opts[@]}" "$path" 2>&1)
             
+            # Clean up background count if still running
+            if [[ -n "$count_pid" ]]; then
+                kill "$count_pid" 2>/dev/null || true
+                wait "$count_pid" 2>/dev/null || true
+                [[ -n "$count_file" ]] && rm -f "$count_file"
+            fi
+            
             scanned_files=$((scanned_files + files_in_path))
+            # Use files_in_path as count if we never got file_count
+            [[ -z "$file_count" ]] && file_count=$files_in_path
             total_files=$((total_files + file_count))
             
             # Clear the 2 progress lines and show result

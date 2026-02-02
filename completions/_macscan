@@ -17,9 +17,11 @@ _macscan() {
                 'update:Update virus database'
                 'status:Show system status'
                 'quarantine:Manage quarantined files'
+                'whitelist:Manage excluded paths'
                 'remove:Uninstall MacScan'
                 'help:Show help information'
                 'version:Show version'
+                'author:Show author information'
             )
             _describe 'command' commands
             ;;
@@ -47,7 +49,17 @@ _macscan() {
                     )
                     _describe 'action' actions
                     ;;
-                update|status|remove|help|version)
+                whitelist)
+                    local actions=(
+                        'list:List whitelisted paths'
+                        'add:Add a path to whitelist'
+                        'remove:Remove a path from whitelist'
+                        'edit:Open whitelist in editor'
+                        'help:Show help'
+                    )
+                    _describe 'action' actions
+                    ;;
+                update|status|remove|help|version|author)
                     _arguments '--help[Show help]'
                     ;;
             esac
