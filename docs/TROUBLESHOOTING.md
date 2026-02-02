@@ -310,7 +310,7 @@ ms update
 If your issue isn't covered here:
 
 1. **Check existing issues:**
-   https://github.com/your-username/macscan/issues
+   https://github.com/artcc/macscan/issues
 
 2. **Create a new issue** with:
    - macOS version

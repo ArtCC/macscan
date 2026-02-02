@@ -62,6 +62,120 @@ maybe_sudo() {
     fi
 }
 
+# Check if Homebrew is installed
+check_homebrew() {
+    if command -v brew &> /dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# Offer to install Homebrew
+install_homebrew_prompt() {
+    echo ""
+    echo -e "${BOLD}${CYAN}📦 Homebrew Not Found${NC}"
+    echo ""
+    echo "  Homebrew is the most popular package manager for macOS."
+    echo "  It allows you to easily install software from the terminal."
+    echo "  MacScan uses it to install ClamAV (the antivirus engine)."
+    echo ""
+    echo -n "  Would you like to install Homebrew now? [y/N]: "
+    read -r response
+    
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        echo ""
+        log_info "Installing Homebrew..."
+        echo ""
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        
+        # Check if installation succeeded
+        if command -v brew &> /dev/null; then
+            log_success "Homebrew installed successfully"
+            return 0
+        else
+            # Try to add to PATH for Apple Silicon
+            if [[ -f "/opt/homebrew/bin/brew" ]]; then
+                eval "$(/opt/homebrew/bin/brew shellenv)"
+                log_success "Homebrew installed successfully"
+                return 0
+            fi
+            log_error "Homebrew installation may have failed"
+            return 1
+        fi
+    else
+        echo ""
+        log_info "Skipping Homebrew installation"
+        echo ""
+        echo "  To install Homebrew manually, run:"
+        echo -e "  ${CYAN}/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"${NC}"
+        echo ""
+        echo "  Or visit: https://brew.sh"
+        echo ""
+        return 1
+    fi
+}
+
+# Check and offer to install ClamAV
+check_and_install_clamav() {
+    if command -v clamscan &> /dev/null; then
+        log_success "ClamAV installed"
+        return 0
+    fi
+    
+    echo ""
+    echo -e "${BOLD}${CYAN}🛡️ ClamAV Not Found${NC}"
+    echo ""
+    echo "  ClamAV is an open-source antivirus engine that MacScan uses"
+    echo "  to detect malware, viruses, and other threats on your system."
+    echo ""
+    echo "  Without ClamAV, MacScan cannot perform scans."
+    echo ""
+    
+    # Check if Homebrew is available
+    if ! check_homebrew; then
+        log_warning "Homebrew is required to install ClamAV"
+        echo ""
+        echo "  To install ClamAV manually without Homebrew:"
+        echo "  1. Download from: https://www.clamav.net/downloads"
+        echo "  2. Follow the official installation guide"
+        echo ""
+        return 1
+    fi
+    
+    echo -n "  Would you like to install ClamAV with Homebrew now? [y/N]: "
+    read -r response
+    
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        echo ""
+        log_info "Installing ClamAV..."
+        echo ""
+        
+        if brew install clamav; then
+            echo ""
+            log_success "ClamAV installed successfully"
+            echo ""
+            echo -e "  ${GRAY}Remember to run 'ms update' after installation${NC}"
+            echo -e "  ${GRAY}to initialize the virus database.${NC}"
+            return 0
+        else
+            log_error "Failed to install ClamAV"
+            return 1
+        fi
+    else
+        echo ""
+        log_info "Skipping ClamAV installation"
+        echo ""
+        echo "  To install ClamAV later, run:"
+        echo -e "  ${CYAN}brew install clamav${NC}"
+        echo ""
+        echo "  Then initialize the database with:"
+        echo -e "  ${CYAN}ms update${NC}"
+        echo ""
+        log_warning "MacScan will be installed but won't work until ClamAV is available"
+        return 1
+    fi
+}
+
 # Check system requirements
 check_requirements() {
     echo ""
@@ -79,19 +193,20 @@ check_requirements() {
     local bash_version="${BASH_VERSION%%.*}"
     if [[ $bash_version -lt 4 ]]; then
         log_warning "Bash 4+ recommended (current: $BASH_VERSION)"
-        echo "         Install with: brew install bash"
+        echo -e "         ${GRAY}MacScan works with Bash 3.2 but some features are optimized for Bash 4+${NC}"
     else
         log_success "Bash $BASH_VERSION"
     fi
     
-    # Check ClamAV
-    if command -v clamscan &> /dev/null; then
-        log_success "ClamAV installed"
+    # Check Homebrew
+    if check_homebrew; then
+        log_success "Homebrew installed"
     else
-        log_warning "ClamAV not installed"
-        echo "         Install with: brew install clamav"
-        echo "         Then run: ms update"
+        install_homebrew_prompt
     fi
+    
+    # Check ClamAV
+    check_and_install_clamav
     
     # Check if source files exist
     if [[ ! -f "${SCRIPT_DIR}/bin/macscan" ]]; then
@@ -179,13 +294,51 @@ install_files() {
         exit 1
     fi
     
-    # Install ms alias
-    if maybe_sudo cp "${SCRIPT_DIR}/bin/ms" "${INSTALL_DIR}/ms"; then
-        maybe_sudo chmod +x "${INSTALL_DIR}/ms"
-        log_success "Installed ms alias to ${INSTALL_DIR}"
-    else
-        log_error "Failed to install ms alias"
-        exit 1
+    # Install ms alias (with conflict check)
+    local install_ms=1
+    if [[ -e "${INSTALL_DIR}/ms" ]]; then
+        # Check if it's our own ms from a previous install
+        if grep -q "macscan" "${INSTALL_DIR}/ms" 2>/dev/null; then
+            log_info "Updating existing ms alias"
+        else
+            echo ""
+            log_warning "Another 'ms' command already exists at ${INSTALL_DIR}/ms"
+            echo ""
+            echo -n "  Overwrite it? [y/N]: "
+            read -r response
+            if [[ "$response" =~ ^[Yy]$ ]]; then
+                log_info "Overwriting existing ms command"
+            else
+                log_info "Skipping ms alias installation"
+                install_ms=0
+                echo "         You can use 'macscan' command instead"
+            fi
+        fi
+    elif command -v ms &> /dev/null; then
+        local existing_ms
+        existing_ms=$(command -v ms)
+        if [[ "$existing_ms" != "${INSTALL_DIR}/ms" ]]; then
+            echo ""
+            log_warning "Another 'ms' command exists: $existing_ms"
+            echo ""
+            echo -n "  Install our 'ms' alias anyway? [y/N]: "
+            read -r response
+            if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                log_info "Skipping ms alias installation"
+                install_ms=0
+                echo "         You can use 'macscan' command instead"
+            fi
+        fi
+    fi
+    
+    if [[ $install_ms -eq 1 ]]; then
+        if maybe_sudo cp "${SCRIPT_DIR}/bin/ms" "${INSTALL_DIR}/ms"; then
+            maybe_sudo chmod +x "${INSTALL_DIR}/ms"
+            log_success "Installed ms alias to ${INSTALL_DIR}"
+        else
+            log_error "Failed to install ms alias"
+            exit 1
+        fi
     fi
     
     # Copy install/uninstall scripts to config for later use

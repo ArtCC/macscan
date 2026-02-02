@@ -78,7 +78,12 @@ readonly FULL_SCAN_PATHS=(
 # ClamAV Configuration
 # =============================================================================
 
-readonly CLAMAV_DB_PATH="/opt/homebrew/var/lib/clamav"
+# Detect ClamAV database path based on architecture (Intel vs Apple Silicon)
+if [[ "$(uname -m)" == "arm64" ]]; then
+    readonly CLAMAV_DB_PATH="/opt/homebrew/var/lib/clamav"
+else
+    readonly CLAMAV_DB_PATH="/usr/local/var/lib/clamav"
+fi
 readonly CLAMAV_SCAN_CMD="clamscan"
 readonly CLAMAV_UPDATE_CMD="freshclam"
 
@@ -114,6 +119,58 @@ is_clamav_installed() {
 # Check if ClamAV database is initialized
 is_clamav_db_ready() {
     [[ -d "$CLAMAV_DB_PATH" ]] && [[ -n "$(ls -A "$CLAMAV_DB_PATH" 2>/dev/null)" ]]
+}
+
+# Get database age in days
+get_db_age_days() {
+    if [[ ! -d "$CLAMAV_DB_PATH" ]]; then
+        echo "-1"
+        return
+    fi
+    
+    local latest
+    latest=$(ls -t "$CLAMAV_DB_PATH"/*.cvd 2>/dev/null | head -n1)
+    
+    if [[ -z "$latest" ]]; then
+        echo "-1"
+        return
+    fi
+    
+    # Get file modification time in epoch seconds
+    local file_epoch
+    file_epoch=$(stat -f "%m" "$latest" 2>/dev/null)
+    local now_epoch
+    now_epoch=$(date +%s)
+    
+    # Calculate days
+    local diff_seconds=$((now_epoch - file_epoch))
+    local diff_days=$((diff_seconds / 86400))
+    
+    echo "$diff_days"
+}
+
+# Check if database is outdated (returns 0 if outdated, 1 if OK)
+is_db_outdated() {
+    local age_days
+    age_days=$(get_db_age_days)
+    
+    [[ $age_days -ge $MACSCAN_DB_MAX_AGE ]] || [[ $age_days -lt 0 ]]
+}
+
+# Show database age warning if needed
+show_db_age_warning() {
+    local age_days
+    age_days=$(get_db_age_days)
+    
+    if [[ $age_days -lt 0 ]]; then
+        return  # DB not initialized, handled elsewhere
+    fi
+    
+    if [[ $age_days -ge $MACSCAN_DB_MAX_AGE ]]; then
+        log_warning "Virus database is ${age_days} days old"
+        echo -e "  ${GRAY}Run 'ms update' to get latest signatures${NC}"
+        echo ""
+    fi
 }
 
 # Create required directories

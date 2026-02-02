@@ -119,8 +119,15 @@ get_db_info() {
 
 # Update ClamAV virus database
 update_database() {
+    # Check ClamAV installation (but not DB - we're about to update it)
     if ! is_clamav_installed; then
+        print_banner
+        echo ""
         log_error "ClamAV is not installed"
+        echo ""
+        echo "  Install ClamAV first:"
+        echo -e "  ${CYAN}brew install clamav${NC}"
+        echo ""
         return 1
     fi
     
@@ -203,23 +210,29 @@ scan_directory() {
     local verbose="${2:-0}"
     local recursive="${3:-1}"
     
+    # Show banner first for consistent UI
+    print_banner
+    
     # Validate path
     if [[ ! -e "$scan_path" ]]; then
+        echo ""
         log_error "Path does not exist: $scan_path"
         return 1
     fi
     
     # Check ClamAV status
+    echo ""
     if ! check_clamav_status; then
         return 1
     fi
+    
+    # Warn if database is outdated
+    show_db_age_warning
     
     # Initialize counters
     init_scan_counters
     local threats_list=()
     
-    print_banner
-    echo ""
     echo -e "  ${BOLD}Scanning:${NC} ${scan_path}"
     echo ""
     
@@ -229,9 +242,11 @@ scan_directory() {
     local -a clam_opts=("--no-summary" "--infected")
     [[ $recursive -eq 1 ]] && clam_opts+=("-r")
     
-    # Add whitelist exclusions
-    local -a exclusions
-    mapfile -t exclusions < <(build_exclusion_args)
+    # Add whitelist exclusions (Bash 3.2 compatible)
+    local -a exclusions=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && exclusions+=("$line")
+    done < <(build_exclusion_args)
     clam_opts+=("${exclusions[@]}")
     
     # Count total files for progress
@@ -316,6 +331,9 @@ quick_scan() {
         return 1
     fi
     
+    # Warn if database is outdated
+    show_db_age_warning
+    
     local total_threats=0
     local total_files=0
     local scanned_files=0
@@ -323,9 +341,11 @@ quick_scan() {
     start_time=$(date +%s)
     local infected_files=()
     
-    # Build exclusion args for quick scan too
-    local -a exclusions
-    mapfile -t exclusions < <(build_exclusion_args)
+    # Build exclusion args for quick scan too (Bash 3.2 compatible)
+    local -a exclusions=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && exclusions+=("$line")
+    done < <(build_exclusion_args)
     
     for path in "${DEFAULT_SCAN_PATHS[@]}"; do
         if [[ -d "$path" ]]; then
@@ -416,15 +436,20 @@ full_scan() {
         return 1
     fi
     
+    # Warn if database is outdated
+    show_db_age_warning
+    
     local total_threats=0
     local total_files=0
     local start_time
     start_time=$(date +%s)
     local infected_files=()
     
-    # Build exclusion args for full scan
-    local -a exclusions
-    mapfile -t exclusions < <(build_exclusion_args)
+    # Build exclusion args for full scan (Bash 3.2 compatible)
+    local -a exclusions=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && exclusions+=("$line")
+    done < <(build_exclusion_args)
     local -a full_opts=("--no-summary" "--infected" "-r")
     full_opts+=("${exclusions[@]}")
     

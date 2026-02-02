@@ -46,6 +46,22 @@ source "${LIB_DIR}/ui/progress.sh"
 source "${LIB_DIR}/scan/clamav.sh"
 
 # =============================================================================
+# Global Cleanup / Signal Handling
+# =============================================================================
+
+# Ensure cursor is always restored on exit or interrupt
+cleanup_on_exit() {
+    show_cursor
+    # Stop any running spinner
+    [[ -n "${_SPINNER_PID:-}" ]] && kill -TERM "$_SPINNER_PID" 2>/dev/null || true
+}
+
+# Trap signals to ensure cleanup
+trap cleanup_on_exit EXIT
+trap 'cleanup_on_exit; exit 130' INT
+trap 'cleanup_on_exit; exit 143' TERM
+
+# =============================================================================
 # Global Options
 # =============================================================================
 
@@ -102,6 +118,7 @@ ${BOLD}COMMANDS:${NC}
     update            Update virus database signatures
     status            Show system status and last scan info
     quarantine        Manage quarantined files
+    whitelist         Manage excluded paths
     remove            Uninstall MacScan
     help              Show this help message
     version           Show version information
@@ -126,6 +143,8 @@ ${BOLD}EXAMPLES:${NC}
     ms scan --dry-run          # Preview scan paths
     ms update                  # Update virus signatures
     ms status                  # Show scan status
+    ms whitelist add ~/safe    # Add path to whitelist
+    ms whitelist list          # View whitelisted paths
     ms quarantine list         # List quarantined files
     ms remove                  # Uninstall MacScan
 
@@ -135,7 +154,15 @@ ${BOLD}CONFIGURATION:${NC}
     Logs:        ~/.local/share/macscan/logs/
     Quarantine:  ~/.local/share/macscan/quarantine/
 
-For more information, visit: https://github.com/your-username/macscan
+${BOLD}DISCLAIMER:${NC}
+    MacScan is provided "as is" without warranty of any kind. No antivirus
+    solution can detect 100% of malware. This tool is intended for educational
+    and supplementary security purposes only. It should not replace macOS
+    built-in security features (Gatekeeper, XProtect) or professional security
+    solutions. The authors are not responsible for any damage or data loss.
+    Use at your own risk. Always maintain backups of important data.
+
+For more information, visit: https://github.com/artcc/macscan
 
 EOF
 }
@@ -725,6 +752,181 @@ quarantine_file() {
 }
 
 # =============================================================================
+# Whitelist Command
+# =============================================================================
+
+cmd_whitelist() {
+    local action="${1:-list}"
+    shift 2>/dev/null || true
+    
+    ensure_directories
+    
+    # Create whitelist if it doesn't exist
+    if [[ ! -f "$WHITELIST_FILE" ]]; then
+        cat > "$WHITELIST_FILE" << 'EOF'
+# MacScan Whitelist
+# Add paths to exclude from scanning (one per line)
+# Lines starting with # are comments
+
+# Example:
+# /path/to/exclude
+# ~/Library/Caches
+EOF
+    fi
+    
+    case "$action" in
+        list)
+            whitelist_list
+            ;;
+        add)
+            whitelist_add "$@"
+            ;;
+        remove|rm)
+            whitelist_remove "$@"
+            ;;
+        edit)
+            whitelist_edit
+            ;;
+        -h|--help|help)
+            echo ""
+            echo "Usage: ms whitelist <command> [path]"
+            echo ""
+            echo "Commands:"
+            echo "  list              List all whitelisted paths"
+            echo "  add <path>        Add a path to whitelist"
+            echo "  remove <path>     Remove a path from whitelist"
+            echo "  edit              Open whitelist in editor"
+            echo ""
+            echo "Examples:"
+            echo "  ms whitelist list"
+            echo "  ms whitelist add ~/Library/Caches"
+            echo "  ms whitelist remove ~/Library/Caches"
+            echo "  ms whitelist edit"
+            echo ""
+            ;;
+        *)
+            log_error "Unknown whitelist action: $action"
+            echo "Run 'ms whitelist help' for usage"
+            return 1
+            ;;
+    esac
+}
+
+# List whitelisted paths
+whitelist_list() {
+    print_banner
+    echo ""
+    echo -e "  ${BOLD}Whitelisted Paths${NC}"
+    echo ""
+    
+    if [[ ! -f "$WHITELIST_FILE" ]] || [[ ! -s "$WHITELIST_FILE" ]]; then
+        echo -e "  ${GRAY}No paths in whitelist${NC}"
+        echo ""
+        echo -e "  Add paths with: ${CYAN}ms whitelist add <path>${NC}"
+        echo ""
+        return 0
+    fi
+    
+    local count=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        
+        # Trim whitespace
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        
+        [[ -z "$line" ]] && continue
+        
+        ((count++))
+        
+        # Check if path exists
+        if [[ -e "$line" ]]; then
+            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $line"
+        else
+            echo -e "  ${YELLOW}${ICON_WARNING}${NC} $line ${GRAY}(path not found)${NC}"
+        fi
+    done < "$WHITELIST_FILE"
+    
+    echo ""
+    if [[ $count -eq 0 ]]; then
+        echo -e "  ${GRAY}No paths in whitelist${NC}"
+    else
+        echo -e "  ${GRAY}Total: $count path(s)${NC}"
+    fi
+    echo ""
+}
+
+# Add path to whitelist
+whitelist_add() {
+    local path="$1"
+    
+    if [[ -z "$path" ]]; then
+        log_error "Missing path argument"
+        echo "Usage: ms whitelist add <path>"
+        return 1
+    fi
+    
+    # Expand ~ to home directory
+    path="${path/#\~/$HOME}"
+    
+    # Resolve to absolute path if exists
+    if [[ -e "$path" ]]; then
+        path="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
+    fi
+    
+    # Check if already in whitelist
+    if grep -qFx "$path" "$WHITELIST_FILE" 2>/dev/null; then
+        log_warning "Path already in whitelist: $path"
+        return 0
+    fi
+    
+    # Add to whitelist
+    echo "$path" >> "$WHITELIST_FILE"
+    log_success "Added to whitelist: $path"
+    
+    if [[ ! -e "$path" ]]; then
+        log_warning "Note: Path does not currently exist"
+    fi
+}
+
+# Remove path from whitelist
+whitelist_remove() {
+    local path="$1"
+    
+    if [[ -z "$path" ]]; then
+        log_error "Missing path argument"
+        echo "Usage: ms whitelist remove <path>"
+        return 1
+    fi
+    
+    # Expand ~ to home directory
+    path="${path/#\~/$HOME}"
+    
+    # Check if in whitelist
+    if ! grep -qF "$path" "$WHITELIST_FILE" 2>/dev/null; then
+        log_warning "Path not in whitelist: $path"
+        return 0
+    fi
+    
+    # Remove from whitelist (create temp, then replace)
+    local temp_file
+    temp_file=$(mktemp)
+    grep -vF "$path" "$WHITELIST_FILE" > "$temp_file"
+    mv "$temp_file" "$WHITELIST_FILE"
+    
+    log_success "Removed from whitelist: $path"
+}
+
+# Open whitelist in editor
+whitelist_edit() {
+    local editor="${EDITOR:-nano}"
+    
+    log_info "Opening whitelist in $editor..."
+    "$editor" "$WHITELIST_FILE"
+}
+
+# =============================================================================
 # Remove Command
 # =============================================================================
 
@@ -863,6 +1065,9 @@ main() {
             ;;
         quarantine)
             cmd_quarantine "$@"
+            ;;
+        whitelist)
+            cmd_whitelist "$@"
             ;;
         remove|uninstall)
             cmd_remove "$@"

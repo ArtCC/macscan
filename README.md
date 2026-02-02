@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Version-0.0.1-orange?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Shell-Bash-lightgrey?style=flat-square" alt="Shell">
-  <img src="https://img.shields.io/github/actions/workflow/status/your-username/macscan/ci.yml?style=flat-square&label=CI" alt="CI">
+  <img src="https://img.shields.io/github/actions/workflow/status/artcc/macscan/ci.yml?style=flat-square&label=CI" alt="CI">
 </p>
 
 # 🛡️ MacScan
@@ -28,24 +28,20 @@ MacScan is an open-source CLI tool designed to scan your Mac for malware, adware
 
 ## 📦 Installation
 
-### Prerequisites
-
-MacScan requires [ClamAV](https://www.clamav.net/) as its scanning engine:
-
-```bash
-brew install clamav
-```
-
-### Install MacScan
+### Quick Install
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/macscan.git
+git clone https://github.com/artcc/macscan.git
 cd macscan
 
 # Run the installer
 ./install.sh
 ```
+
+The installer will check for dependencies and offer to install them:
+- **Homebrew** — Package manager for macOS (if not installed)
+- **ClamAV** — Open-source antivirus engine (if not installed)
 
 ### Post-installation
 
@@ -53,6 +49,18 @@ Initialize the virus database (required before first scan):
 
 ```bash
 ms update
+```
+
+### Manual Prerequisites
+
+If you prefer to install dependencies manually:
+
+```bash
+# Install Homebrew (if needed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install ClamAV
+brew install clamav
 ```
 
 ## 🚀 Quick Start
@@ -67,7 +75,7 @@ ms scan --path ~/Downloads
 # Full system scan
 ms scan --full
 
-# Preview what will be scanned
+# Preview what will be scanned (with whitelist)
 ms scan --dry-run
 
 # Silent scan with notification
@@ -81,6 +89,10 @@ ms update
 
 # Show status and last scan info
 ms status
+
+# Manage whitelisted paths
+ms whitelist list
+ms whitelist add ~/safe-folder
 
 # Manage quarantined files
 ms quarantine list
@@ -99,6 +111,7 @@ ms help
 | `ms update` | Update ClamAV virus database |
 | `ms status` | Show system status and last scan info |
 | `ms quarantine` | Manage quarantined files |
+| `ms whitelist` | Manage excluded paths |
 | `ms remove` | Uninstall MacScan |
 | `ms help` | Show help information |
 | `ms version` | Show version information |
@@ -152,11 +165,36 @@ auto_update=1
 
 ### Whitelist
 
-Exclude paths from scanning by adding them to `~/.config/macscan/whitelist`:
+Exclude paths from scanning using the `whitelist` command:
+
+```bash
+# List whitelisted paths
+ms whitelist list
+
+# Add a path to whitelist
+ms whitelist add ~/Library/Caches
+
+# Remove a path from whitelist
+ms whitelist remove ~/Library/Caches
+
+# Edit whitelist manually
+ms whitelist edit
+```
+
+Or edit the file directly at `~/.config/macscan/whitelist`:
 
 ```
+# Lines starting with # are comments
 /path/to/exclude
 /another/path
+```
+
+### Database Age Warning
+
+MacScan automatically warns you if the virus database is older than 7 days before each scan. Keep your database updated with:
+
+```bash
+ms update
 ```
 
 ## 🧪 Development
@@ -194,7 +232,7 @@ macscan/
 
 ```bash
 # Clone and enter directory
-git clone https://github.com/your-username/macscan.git
+git clone https://github.com/artcc/macscan.git
 cd macscan
 
 # Run directly without installing
@@ -234,10 +272,13 @@ This will remove:
 
 ### Phase 2 - Core Features ✅
 - [x] Quarantine management
-- [x] Whitelist support
+- [x] Whitelist support (CLI)
 - [x] JSON export
 - [x] macOS notifications
 - [x] Shell completions (Bash/Zsh)
+- [x] Database age warning
+- [x] Dry-run mode
+- [x] Signal handling (Ctrl+C safety)
 - [x] GitHub Actions CI
 - [ ] YARA rules integration
 - [ ] macOS-specific malware hashes (Objective-See)
@@ -246,10 +287,9 @@ This will remove:
 
 ### Phase 3 - Advanced
 - [ ] Real-time monitoring (fswatch)
-- [ ] Native macOS notifications
 - [ ] Scheduled scans (launchd)
-- [ ] Detailed reports
-- [ ] Whitelist management UI
+- [ ] Detailed HTML reports
+- [ ] VirusTotal API integration
 
 ### Phase 4 - Community
 - [ ] Community rule contributions
@@ -274,7 +314,15 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## ⚠️ Disclaimer
 
-MacScan is provided as-is without warranty. While it uses ClamAV's virus database, no antivirus solution is 100% effective. Always practice safe computing habits and keep your system updated.
+**MacScan is provided "as is" without warranty of any kind, express or implied.**
+
+- **No antivirus solution can detect 100% of malware.** MacScan uses ClamAV's open-source virus database, which may not include the latest threats or macOS-specific malware.
+- **This tool is for educational and supplementary security purposes only.** It should not replace macOS built-in security features (Gatekeeper, XProtect, Malware Removal Tool) or professional security solutions.
+- **False positives may occur.** ClamAV may flag legitimate files as threats. Always verify before deleting.
+- **The authors are not responsible for any damage, data loss, or security incidents** resulting from the use or misuse of this software.
+- **Use at your own risk.** Always maintain current backups of important data.
+
+By using MacScan, you acknowledge that you understand these limitations and accept full responsibility for its use on your system.
 
 ## 📄 License
 
