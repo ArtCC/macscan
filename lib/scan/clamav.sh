@@ -231,17 +231,18 @@ scan_directory() {
     # Warn if database is outdated
     show_db_age_warning
     
-    # Initialize counters
-    init_scan_counters
-    local threats_list=()
+    local start_time
+    start_time=$(date +%s)
+    local infected_files=()
+    local threats_count=0
+    local files_count=0
     
     echo -e "  ${BOLD}Scanning:${NC} ${scan_path}"
-    echo ""
     
     hide_cursor
     
     # Build clamscan options as array (prevents word splitting issues)
-    local -a clam_opts=("--no-summary" "--infected")
+    local -a clam_opts=("--no-summary")
     [[ $recursive -eq 1 ]] && clam_opts+=("-r")
     
     # Add whitelist exclusions (Bash 3.2 compatible)
@@ -255,7 +256,15 @@ scan_directory() {
     
     # Count total files for progress
     local total_files
-    total_files=$(count_files "$scan_path")
+    if [[ -d "$scan_path" ]]; then
+        if [[ $recursive -eq 1 ]]; then
+            total_files=$(find "$scan_path" -type f 2>/dev/null | wc -l | tr -d ' ')
+        else
+            total_files=$(find "$scan_path" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
+        fi
+    else
+        total_files=1
+    fi
     
     if [[ $total_files -eq 0 ]]; then
         log_warning "No files to scan in: $scan_path"
@@ -263,38 +272,60 @@ scan_directory() {
         return 0
     fi
     
-    log_info "Found $total_files files to scan"
+    echo -e "  ${GRAY}(${total_files} files)${NC}"
+    # Print 2 empty lines for progress area
+    echo ""
     echo ""
     
-    # Perform scan
-    local current=0
-    local scan_output
-    local infected_files=()
+    # Spinner characters
+    local spin_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local max_display=50
     
-    # Use clamscan with progress tracking (using array expansion)
+    # Process clamscan output in real-time
     while IFS= read -r line; do
-        # Parse clamscan output
-        if [[ "$line" =~ ^(.*):\ (.*)\ FOUND$ ]]; then
-            local infected_file="${BASH_REMATCH[1]}"
-            local virus_name="${BASH_REMATCH[2]}"
-            infected_files+=("$infected_file|$virus_name")
-            increment_threat_count
+        if [[ "$line" =~ ^(.+):\ (.+)$ ]]; then
+            local file_path="${BASH_REMATCH[1]}"
+            local status="${BASH_REMATCH[2]}"
+            ((files_count++))
             
-            if [[ $verbose -eq 1 ]]; then
-                show_file_result "$infected_file" "infected"
+            # Get spinner char
+            local spin_char="${spin_chars:files_count%${#spin_chars}:1}"
+            
+            # Show current file being scanned
+            local display_file="${file_path##*/}"
+            if [[ ${#display_file} -gt $max_display ]]; then
+                display_file="${display_file:0:$max_display}..."
             fi
-        elif [[ "$line" =~ ^Scanning ]]; then
-            ((current++))
-            increment_file_count
-            show_progress "$current" "$total_files" "(${current}/${total_files} files)"
+            
+            # Move up 2 lines, print spinner line with clear
+            printf "\033[2A\033[K"
+            printf "     ${CYAN}%s${NC} Scanning... ${GRAY}[%d/%d]${NC}\n" "$spin_char" "$files_count" "$total_files"
+            # Print file line with clear
+            printf "\033[K     ${GRAY}%s${NC}\n" "$display_file"
+            
+            # Check if infected
+            if [[ "$status" == *"FOUND" ]]; then
+                local virus_name="${status% FOUND}"
+                infected_files+=("$file_path|$virus_name")
+                ((threats_count++))
+            fi
         fi
     done < <(clamscan "${clam_opts[@]}" "$scan_path" 2>&1)
     
-    # Complete progress
-    local duration
-    duration=$(get_scan_duration)
+    # Clear the 2 progress lines
+    printf "\033[2A\033[K"
+    if [[ $threats_count -gt 0 ]]; then
+        printf "     ${RED}✗ ${threats_count} threat(s) found${NC}\n"
+    else
+        printf "     ${GREEN}✓ Clean${NC} ${GRAY}(${files_count} scanned)${NC}\n"
+    fi
+    printf "\033[K\n"
     
-    echo ""
+    show_cursor
+    
+    local end_time
+    end_time=$(date +%s)
+    local duration=$((end_time - start_time))
     
     # Show infected files if any
     if [[ ${#infected_files[@]} -gt 0 ]]; then
@@ -310,13 +341,11 @@ scan_directory() {
     fi
     
     # Show summary
-    show_scan_summary "$_SCAN_FILES_COUNT" "$_SCAN_THREATS_COUNT" "$duration"
+    show_scan_summary "$files_count" "$threats_count" "$duration"
     
     # Save scan info
-    save_last_scan "$scan_path" "$_SCAN_FILES_COUNT" "$_SCAN_THREATS_COUNT" "$duration"
-    write_log "Scan completed: $scan_path - Files: $_SCAN_FILES_COUNT, Threats: $_SCAN_THREATS_COUNT"
-    
-    show_cursor
+    save_last_scan "$scan_path" "$files_count" "$threats_count" "$duration"
+    write_log "Scan completed: $scan_path - Files: $files_count, Threats: $threats_count"
     
     # Return based on threats found
     [[ $_SCAN_THREATS_COUNT -eq 0 ]] && return 0 || return 1
@@ -475,6 +504,7 @@ full_scan() {
     
     local total_threats=0
     local total_files=0
+    local scanned_files=0
     local start_time
     start_time=$(date +%s)
     local infected_files=()
@@ -484,40 +514,78 @@ full_scan() {
     while IFS= read -r line; do
         [[ -n "$line" ]] && exclusions+=("$line")
     done < <(build_exclusion_args)
-    local -a full_opts=("--no-summary" "--infected" "-r")
+    local -a full_opts=("--no-summary" "-r")
     if [[ ${#exclusions[@]} -gt 0 ]]; then
         full_opts+=("${exclusions[@]}")
     fi
     
+    hide_cursor
+    
     for path in "${FULL_SCAN_PATHS[@]}"; do
         if [[ -d "$path" ]]; then
-            echo ""
-            echo -e "  ${CYAN}${ICON_SCAN}${NC} Scanning: ${path}"
-            
-            local output
-            output=$(clamscan "${full_opts[@]}" "$path" 2>&1)
-            
-            # Count threats
-            while IFS= read -r line; do
-                if [[ "$line" =~ ^(.*):\ (.*)\ FOUND$ ]]; then
-                    local infected_file="${BASH_REMATCH[1]}"
-                    local virus_name="${BASH_REMATCH[2]}"
-                    infected_files+=("$infected_file|$virus_name")
-                    ((total_threats++))
-                fi
-            done <<< "$output"
-            
+            # Count files in directory
             local file_count
             file_count=$(find "$path" -type f 2>/dev/null | wc -l | tr -d ' ')
+            
+            # Show what we're scanning
+            echo -e "  ${CYAN}${ICON_FOLDER}${NC} ${path} ${GRAY}(${file_count} files)${NC}"
+            # Print 2 empty lines for progress area
+            echo ""
+            echo ""
+            
+            # Parse output while showing progress
+            local path_threats=0
+            local files_in_path=0
+            local max_display=50
+            local spin_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+            
+            # Process clamscan output in real-time
+            while IFS= read -r line; do
+                if [[ "$line" =~ ^(.+):\ (.+)$ ]]; then
+                    local file_path="${BASH_REMATCH[1]}"
+                    local status="${BASH_REMATCH[2]}"
+                    ((files_in_path++))
+                    
+                    # Get spinner char
+                    local spin_char="${spin_chars:files_in_path%${#spin_chars}:1}"
+                    
+                    # Show current file being scanned
+                    local display_file="${file_path##*/}"
+                    if [[ ${#display_file} -gt $max_display ]]; then
+                        display_file="${display_file:0:$max_display}..."
+                    fi
+                    
+                    # Move up 2 lines, print spinner line with clear
+                    printf "\033[2A\033[K"
+                    printf "     ${CYAN}%s${NC} Scanning... ${GRAY}[%d/%d]${NC}\n" "$spin_char" "$files_in_path" "$file_count"
+                    # Print file line with clear
+                    printf "\033[K     ${GRAY}%s${NC}\n" "$display_file"
+                    
+                    # Check if infected
+                    if [[ "$status" == *"FOUND" ]]; then
+                        local virus_name="${status% FOUND}"
+                        infected_files+=("$file_path|$virus_name")
+                        ((total_threats++))
+                        ((path_threats++))
+                    fi
+                fi
+            done < <(clamscan "${full_opts[@]}" "$path" 2>&1)
+            
+            scanned_files=$((scanned_files + files_in_path))
             total_files=$((total_files + file_count))
             
-            if [[ $total_threats -gt 0 ]]; then
-                echo -e "     ${RED}${total_threats} threat(s) found so far${NC}"
+            # Clear the 2 progress lines and show result
+            printf "\033[2A\033[K"
+            if [[ $path_threats -gt 0 ]]; then
+                printf "     ${RED}✗ ${path_threats} threat(s) found${NC}\n"
             else
-                echo -e "     ${GREEN}Clean${NC}"
+                printf "     ${GREEN}✓ Clean${NC} ${GRAY}(${files_in_path} scanned)${NC}\n"
             fi
+            printf "\033[K\n"
         fi
     done
+    
+    show_cursor
     
     local end_time
     end_time=$(date +%s)
@@ -536,12 +604,12 @@ full_scan() {
         done
     fi
     
-    show_scan_summary "$total_files" "$total_threats" "$duration"
-    save_last_scan "Full Scan" "$total_files" "$total_threats" "$duration"
+    show_scan_summary "$scanned_files" "$total_threats" "$duration"
+    save_last_scan "Full Scan" "$scanned_files" "$total_threats" "$duration"
     
     # Export to JSON if requested
     if [[ -n "${EXPORT_JSON:-}" ]]; then
-        export_scan_results "Full Scan" "$total_files" "$total_threats" "$duration" "${infected_files[@]}"
+        export_scan_results "Full Scan" "$scanned_files" "$total_threats" "$duration" "${infected_files[@]}"
     fi
     
     return 0
