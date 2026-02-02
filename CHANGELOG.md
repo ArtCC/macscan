@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ClamAV auto-configuration**: Installer now creates freshclam.conf automatically
 - **Database initialization prompt**: Offers to run `ms update` at end of installation
 - **Real-time scan progress**: All scan modes now show spinner, file counter, and current file
+- **Background file counting**: Full Scan counts files in parallel for large directories ($HOME)
 
 ### Fixed
 - Bash 3.2 compatibility: Fixed `read -t 0.1` (decimals not supported)
