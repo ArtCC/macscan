@@ -103,10 +103,8 @@ send_notification() {
 # =============================================================================
 
 show_help() {
+    print_ascii_banner
     cat << EOF
-
-${BOLD}${MACSCAN_NAME}${NC} v${MACSCAN_VERSION} - ${MACSCAN_DESCRIPTION}
-
 ${BOLD}USAGE:${NC}
     macscan <command> [options]
     ms <command> [options]

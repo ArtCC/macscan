@@ -119,12 +119,27 @@ print_line() {
     echo -e "  ${GRAY}${line}${NC}"
 }
 
-# Print app banner
+# Print app banner (simple version)
 # Usage: print_banner
 print_banner() {
     echo ""
     echo -e "  ${BOLD_CYAN}${ICON_SHIELD}  MacScan${NC} ${GRAY}v${MACSCAN_VERSION:-0.1.0}${NC}"
     print_line 45
+}
+
+# Print ASCII art banner (full version)
+# Usage: print_ascii_banner
+print_ascii_banner() {
+    echo ""
+    echo -e "${CYAN} __  __            ____"
+    echo -e "|  \\/  | __ _  ___/ ___|  ___ __ _ _ __"
+    echo -e "| |\\/| |/ _\` |/ __\\___ \\ / __/ _\` | '_ \\"
+    echo -e "| |  | | (_| | (__ ___) | (_| (_| | | | |"
+    echo -e "|_|  |_|\\__,_|\\___|____/ \\___\\__,_|_| |_|${NC}"
+    echo ""
+    echo -e "${GREEN}  https://github.com/artcc/macscan${NC}"
+    echo -e "${GRAY}  Command-line malware scanner for macOS${NC}"
+    echo ""
 }
 
 # Format file size for display (without bc dependency)
