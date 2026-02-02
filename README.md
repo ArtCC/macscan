@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-macOS-blue?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/Version-0.0.1-orange?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.0.2-orange?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Shell-Bash-lightgrey?style=flat-square" alt="Shell">
   <img src="https://img.shields.io/github/actions/workflow/status/artcc/macscan/ci.yml?style=flat-square&label=CI" alt="CI">
 </p>

@@ -120,6 +120,7 @@ ${BOLD}COMMANDS:${NC}
     remove            Uninstall MacScan
     help              Show this help message
     version           Show version information
+    author            Show author information
 
 ${BOLD}OPTIONS:${NC}
     -p, --path <dir>  Specify directory to scan
@@ -171,6 +172,20 @@ show_version() {
     echo -e "  ${GRAY}${MACSCAN_DESCRIPTION}${NC}"
     echo ""
     echo -e "  ${GRAY}ClamAV: $(get_clamav_version)${NC}"
+    echo ""
+}
+
+show_author() {
+    echo ""
+    echo -e "  ${BOLD}${CYAN}👤 Author${NC}"
+    echo ""
+    echo -e "  ${BOLD}Arturo Carretero Calvo${NC}"
+    echo ""
+    echo -e "  ${GRAY}GitHub:${NC}   https://github.com/artcc"
+    echo -e "  ${GRAY}Project:${NC}  https://github.com/artcc/macscan"
+    echo ""
+    echo -e "  ${GRAY}100% built with GitHub Copilot (Claude Opus 4.5)${NC}"
+    echo -e "  ${GRAY}Made with ❤️ for the macOS community — 2026${NC}"
     echo ""
 }
 
@@ -1031,6 +1046,197 @@ cmd_remove() {
 }
 
 # =============================================================================
+# Interactive Menu
+# =============================================================================
+
+# Menu options
+declare -a MENU_OPTIONS=(
+    "Quick Scan|Scan common threat locations|cmd_quick_scan_menu"
+    "Full Scan|Deep scan of your entire system|cmd_full_scan_menu"
+    "Scan Path|Scan a specific directory|cmd_path_scan_menu"
+    "Update|Update virus database signatures|cmd_update_menu"
+    "Status|Show system status and last scan|cmd_status"
+    "Quarantine|Manage quarantined files|cmd_quarantine_menu"
+    "Whitelist|Manage excluded paths|cmd_whitelist_menu"
+)
+
+# Menu wrapper functions
+cmd_quick_scan_menu() {
+    quick_scan 0
+}
+
+cmd_full_scan_menu() {
+    full_scan 0
+}
+
+cmd_path_scan_menu() {
+    echo ""
+    echo -n -e "  ${BOLD}Enter path to scan:${NC} "
+    read -r scan_path
+    
+    if [[ -z "$scan_path" ]]; then
+        log_warning "No path entered"
+        return 1
+    fi
+    
+    scan_path="${scan_path/#\~/$HOME}"
+    
+    if [[ ! -e "$scan_path" ]]; then
+        log_error "Path does not exist: $scan_path"
+        return 1
+    fi
+    
+    scan_directory "$scan_path" 0
+}
+
+cmd_update_menu() {
+    update_database
+}
+
+cmd_quarantine_menu() {
+    cmd_quarantine list
+}
+
+cmd_whitelist_menu() {
+    cmd_whitelist list
+}
+
+# Draw menu
+draw_menu() {
+    local selected=$1
+    local num_options=${#MENU_OPTIONS[@]}
+    
+    # Clear screen and draw
+    clear
+    print_ascii_banner
+    
+    echo ""
+    
+    local i=0
+    for option in "${MENU_OPTIONS[@]}"; do
+        local label="${option%%|*}"
+        local rest="${option#*|}"
+        local desc="${rest%%|*}"
+        
+        if [[ $i -eq $selected ]]; then
+            echo -e "  ${GREEN}▶ ${i+1}. ${BOLD}${label}${NC}    ${GRAY}${desc}${NC}"
+        else
+            echo -e "    ${i+1}. ${label}    ${GRAY}${desc}${NC}"
+        fi
+        ((i++))
+    done
+    
+    echo ""
+    echo -e "  ${GRAY}─────────────────────────────────────────────${NC}"
+    echo -e "  ${GRAY}↑↓${NC} Navigate  ${GRAY}Enter${NC} Select  ${GRAY}H${NC} Help  ${GRAY}V${NC} Version  ${GRAY}A${NC} Author  ${GRAY}Q${NC} Quit"
+}
+
+# Interactive menu
+show_interactive_menu() {
+    local selected=0
+    local num_options=${#MENU_OPTIONS[@]}
+    
+    # Hide cursor
+    hide_cursor
+    
+    # Trap to restore cursor on exit
+    trap 'show_cursor; echo ""' EXIT
+    
+    while true; do
+        draw_menu $selected
+        
+        # Read single character
+        local key
+        IFS= read -rsn1 key
+        
+        case "$key" in
+            # Arrow keys (escape sequences)
+            $'\x1b')
+                read -rsn2 -t 0.1 key
+                case "$key" in
+                    '[A') # Up arrow
+                        ((selected--))
+                        [[ $selected -lt 0 ]] && selected=$((num_options - 1))
+                        ;;
+                    '[B') # Down arrow
+                        ((selected++))
+                        [[ $selected -ge $num_options ]] && selected=0
+                        ;;
+                esac
+                ;;
+            # Number keys 1-9
+            [1-9])
+                local num=$((key - 1))
+                if [[ $num -lt $num_options ]]; then
+                    selected=$num
+                    # Execute immediately
+                    show_cursor
+                    clear
+                    local option="${MENU_OPTIONS[$selected]}"
+                    local func="${option##*|}"
+                    $func
+                    echo ""
+                    echo -e "  ${GRAY}Press any key to continue...${NC}"
+                    read -rsn1
+                    hide_cursor
+                fi
+                ;;
+            # Enter key
+            '')
+                show_cursor
+                clear
+                local option="${MENU_OPTIONS[$selected]}"
+                local func="${option##*|}"
+                $func
+                echo ""
+                echo -e "  ${GRAY}Press any key to continue...${NC}"
+                read -rsn1
+                hide_cursor
+                ;;
+            # Help
+            h|H)
+                show_cursor
+                clear
+                show_help
+                echo ""
+                echo -e "  ${GRAY}Press any key to continue...${NC}"
+                read -rsn1
+                hide_cursor
+                ;;
+            # Quit
+            q|Q)
+                show_cursor
+                clear
+                echo ""
+                echo -e "  ${GRAY}Goodbye! Stay safe. 🛡️${NC}"
+                echo ""
+                exit 0
+                ;;
+            # Author
+            a|A)
+                show_cursor
+                clear
+                show_author
+                echo ""
+                echo -e "  ${GRAY}Press any key to continue...${NC}"
+                read -rsn1
+                hide_cursor
+                ;;
+            # Version
+            v|V)
+                show_cursor
+                clear
+                show_version
+                echo ""
+                echo -e "  ${GRAY}Press any key to continue...${NC}"
+                read -rsn1
+                hide_cursor
+                ;;
+        esac
+    done
+}
+
+# =============================================================================
 # Main Entry Point
 # =============================================================================
 
@@ -1041,9 +1247,9 @@ main() {
         exit 1
     fi
     
-    # No arguments - show help
+    # No arguments - show interactive menu
     if [[ $# -eq 0 ]]; then
-        show_help
+        show_interactive_menu
         exit 0
     fi
     
@@ -1075,6 +1281,9 @@ main() {
             ;;
         version|--version|-V)
             show_version
+            ;;
+        author)
+            show_author
             ;;
         *)
             log_error "Unknown command: $command"

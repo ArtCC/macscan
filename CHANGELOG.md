@@ -7,31 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-02-02
+
 ### Added
-- **Quarantine management**: New `ms quarantine` command with `list`, `restore`, `delete`, and `clean` subcommands
-- **Uninstall command**: `ms remove` to uninstall MacScan directly from CLI
-- **Dry-run mode**: `--dry-run` flag to preview what would be scanned
-- **Quiet mode**: `--quiet` flag for silent operation in scripts
-- **No-color mode**: `--no-color` flag to disable ANSI colors
-- **macOS notifications**: `--notify` flag to send native notifications on scan completion
-- **JSON export**: `--export <file>` flag to export scan results to JSON
-- **Whitelist support**: Paths in `~/.config/macscan/whitelist` are now excluded from scans
-- **Database age warning**: Warns if virus database is more than 7 days old
-- **Shell completions**: Bash and Zsh autocompletion scripts
-- **GitHub Actions CI**: Automated linting with ShellCheck
+- **Interactive menu**: Run `ms` without arguments for a TUI menu with arrow navigation
+- **Whitelist CLI**: New `ms whitelist` command with `list`, `add`, `remove`, `edit` subcommands
+- **Author command**: `ms author` to show author information
+- **ASCII art banner**: Beautiful header in help and interactive menu
+- **Auto-install dependencies**: Installer now offers to install Homebrew and ClamAV if missing
+- **Keyboard shortcuts**: H (help), V (version), A (author), Q (quit) in interactive menu
 
 ### Changed
-- Improved path validation with security checks
-- Better progress bar that adapts to terminal width
-- More accurate file counting in quick scan
-- Spinner now handles interruption (Ctrl+C) cleanly
-- `format_size` no longer depends on `bc` (uses `awk` instead)
+- `ms` without arguments now shows interactive menu instead of help
+- Improved installer with dependency detection and user prompts
+- Better Bash 3.2 compatibility (replaced mapfile with while-read loops)
+- Help command now shows ASCII art banner
 
 ### Fixed
-- Fixed variable expansion issues with clamscan options (now uses arrays)
-- Fixed progress bar display issues in narrow terminals
-- Fixed spinner not stopping cleanly when interrupted
-- Fixed file counter not incrementing correctly in pipe operations
+- Signal handling: Ctrl+C now properly restores cursor visibility
+- Installer checks for existing `ms` command to avoid conflicts
 
 ## [0.0.1] - 2026-01-15
 
@@ -49,5 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/artcc/macscan/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/artcc/macscan/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/artcc/macscan/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/artcc/macscan/releases/tag/v0.0.1
