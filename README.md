@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-macOS-blue?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/Version-0.0.2-orange?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.0.3-orange?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Shell-Bash-lightgrey?style=flat-square" alt="Shell">
   <img src="https://img.shields.io/github/actions/workflow/status/artcc/macscan/ci.yml?style=flat-square&label=CI" alt="CI">
 </p>
@@ -14,17 +14,18 @@ MacScan is an open-source CLI tool designed to scan your Mac for malware, adware
 
 ## ✨ Features
 
-- **Quick Scan** — Scan common threat locations in seconds
+- **Quick Scan** — Scan common threat locations (Downloads, Desktop, Documents, Applications)
 - **Full System Scan** — Deep scan of your entire system
 - **Path Scan** — Scan specific directories
-- **Quarantine** — Isolate and manage infected files
+- **Real-time Progress** — See current file being scanned with counter
+- **Quarantine** — Isolate and manage infected files safely
 - **Whitelist** — Exclude trusted paths from scans
-- **Auto-updates** — Keep virus signatures up to date
 - **JSON Export** — Export scan results for automation
 - **macOS Notifications** — Native alerts on scan completion
-- **Beautiful TUI** — Colors, progress bars, and spinners
+- **Interactive TUI** — Arrow-key menu navigation with keyboard shortcuts
 - **Lightweight** — Pure Bash with ClamAV backend
-- **Transparent** — Open source, no telemetry, no hidden behavior
+- **Transparent** — Open source, no telemetry, no network requests
+- **Safe** — No auto-delete, all actions require confirmation
 
 ## 📦 Installation
 
@@ -43,13 +44,7 @@ The installer will check for dependencies and offer to install them:
 - **Homebrew** — Package manager for macOS (if not installed)
 - **ClamAV** — Open-source antivirus engine (if not installed)
 
-### Post-installation
-
-Initialize the virus database (required before first scan):
-
-```bash
-ms update
-```
+The installer will also offer to initialize the virus database automatically.
 
 ### Manual Prerequisites
 
@@ -370,6 +365,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <p align="left">
   <sub>Made with ❤️ for the macOS community</sub><br>
-  <sub>100% built with GitHub Copilot (Claude Opus 4.5)</sub><br>
+  <sub>Built with GitHub Copilot (Claude Opus 4.5)</sub><br>
   <sub>Arturo Carretero Calvo — 2026</sub>
 </p>

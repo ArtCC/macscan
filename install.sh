@@ -116,10 +116,42 @@ install_homebrew_prompt() {
     fi
 }
 
+# Configure ClamAV after installation
+configure_clamav() {
+    log_info "Configuring ClamAV..."
+    
+    # Detect Homebrew prefix (Apple Silicon vs Intel)
+    local brew_prefix
+    if [[ -d "/opt/homebrew" ]]; then
+        brew_prefix="/opt/homebrew"
+    else
+        brew_prefix="/usr/local"
+    fi
+    
+    local clamav_etc="${brew_prefix}/etc/clamav"
+    local freshclam_conf="${clamav_etc}/freshclam.conf"
+    local freshclam_sample="${clamav_etc}/freshclam.conf.sample"
+    
+    # Create freshclam.conf from sample if it doesn't exist
+    if [[ ! -f "$freshclam_conf" ]] && [[ -f "$freshclam_sample" ]]; then
+        cp "$freshclam_sample" "$freshclam_conf"
+        # Comment out the Example line (required for freshclam to work)
+        sed -i '' 's/^Example/#Example/' "$freshclam_conf"
+        log_success "ClamAV configured"
+    elif [[ -f "$freshclam_conf" ]]; then
+        log_success "ClamAV already configured"
+    else
+        log_warning "Could not find freshclam.conf.sample"
+        echo -e "  ${GRAY}You may need to configure ClamAV manually${NC}"
+    fi
+}
+
 # Check and offer to install ClamAV
 check_and_install_clamav() {
     if command -v clamscan &> /dev/null; then
         log_success "ClamAV installed"
+        # Also ensure it's configured
+        configure_clamav
         return 0
     fi
     
@@ -129,24 +161,28 @@ check_and_install_clamav() {
     echo "  ClamAV is an open-source antivirus engine that MacScan uses"
     echo "  to detect malware, viruses, and other threats on your system."
     echo ""
-    echo "  Without ClamAV, MacScan cannot perform scans."
+    echo -e "  ${RED}ClamAV is required for MacScan to work.${NC}"
     echo ""
     
     # Check if Homebrew is available
     if ! check_homebrew; then
-        log_warning "Homebrew is required to install ClamAV"
+        log_error "Homebrew is required to install ClamAV"
         echo ""
-        echo "  To install ClamAV manually without Homebrew:"
+        echo "  Please install Homebrew first, then run this installer again."
+        echo ""
+        echo "  Or install ClamAV manually:"
         echo "  1. Download from: https://www.clamav.net/downloads"
         echo "  2. Follow the official installation guide"
+        echo "  3. Run this installer again"
         echo ""
-        return 1
+        exit 1
     fi
     
-    echo -n "  Would you like to install ClamAV with Homebrew now? [y/N]: "
+    echo -n "  Would you like to install ClamAV with Homebrew now? [Y/n]: "
     read -r response
     
-    if [[ "$response" =~ ^[Yy]$ ]]; then
+    # Default to Yes if empty
+    if [[ -z "$response" || "$response" =~ ^[Yy]$ ]]; then
         echo ""
         log_info "Installing ClamAV..."
         echo ""
@@ -154,26 +190,34 @@ check_and_install_clamav() {
         if brew install clamav; then
             echo ""
             log_success "ClamAV installed successfully"
+            
+            # Configure ClamAV (required for freshclam to work)
+            configure_clamav
+            
             echo ""
             echo -e "  ${GRAY}Remember to run 'ms update' after installation${NC}"
             echo -e "  ${GRAY}to initialize the virus database.${NC}"
             return 0
         else
             log_error "Failed to install ClamAV"
-            return 1
+            echo ""
+            echo "  Please try installing manually:"
+            echo -e "  ${CYAN}brew install clamav${NC}"
+            echo ""
+            exit 1
         fi
     else
         echo ""
-        log_info "Skipping ClamAV installation"
+        log_error "ClamAV is required for MacScan to work"
         echo ""
-        echo "  To install ClamAV later, run:"
+        echo "  Installation cancelled."
+        echo ""
+        echo "  To install later, first install ClamAV:"
         echo -e "  ${CYAN}brew install clamav${NC}"
         echo ""
-        echo "  Then initialize the database with:"
-        echo -e "  ${CYAN}ms update${NC}"
+        echo "  Then run this installer again."
         echo ""
-        log_warning "MacScan will be installed but won't work until ClamAV is available"
-        return 1
+        exit 1
     fi
 }
 
@@ -190,14 +234,13 @@ check_requirements() {
     fi
     log_success "macOS detected"
     
-    # Check Bash version
+    # Check Bash version (3.2+ required, which is macOS default)
     local bash_version="${BASH_VERSION%%.*}"
-    if [[ $bash_version -lt 4 ]]; then
-        log_warning "Bash 4+ recommended (current: $BASH_VERSION)"
-        echo -e "         ${GRAY}MacScan works with Bash 3.2 but some features are optimized for Bash 4+${NC}"
-    else
-        log_success "Bash $BASH_VERSION"
+    if [[ $bash_version -lt 3 ]]; then
+        log_error "Bash 3.2+ required (current: $BASH_VERSION)"
+        exit 1
     fi
+    log_success "Bash $BASH_VERSION"
     
     # Check Homebrew
     if check_homebrew; then
@@ -427,32 +470,52 @@ show_success() {
     echo -e "${GREEN}${ICON_SUCCESS}${NC} ${BOLD}MacScan installed successfully!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+    
+    # Offer to initialize virus database
+    echo -e "  ${BOLD}Initialize virus database${NC}"
+    echo ""
+    echo "  The virus database needs to be downloaded before scanning."
+    echo "  This may take a few minutes on the first run."
+    echo ""
+    echo -n "  Would you like to initialize the database now? [Y/n]: "
+    read -r response
+    
+    if [[ -z "$response" || "$response" =~ ^[Yy]$ ]]; then
+        echo ""
+        log_info "Initializing virus database..."
+        echo ""
+        if freshclam 2>&1; then
+            echo ""
+            log_success "Virus database initialized"
+        else
+            log_warning "Database initialization had issues"
+            echo -e "  ${GRAY}Try running 'ms update' manually later${NC}"
+        fi
+        echo ""
+    else
+        echo ""
+        log_info "Skipping database initialization"
+        echo ""
+        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Remember to initialize the database before scanning:"
+        echo -e "    ${CYAN}ms update${NC}"
+        echo ""
+    fi
+    
     echo "  Quick start:"
     echo ""
+    echo -e "    ${CYAN}ms${NC}                         # Interactive menu"
     echo -e "    ${CYAN}ms scan${NC}                    # Quick scan"
     echo -e "    ${CYAN}ms scan --path ~/Downloads${NC} # Scan folder"
     echo -e "    ${CYAN}ms scan --full${NC}             # Full system scan"
-    echo -e "    ${CYAN}ms scan --dry-run${NC}          # Preview scan"
-    echo -e "    ${CYAN}ms update${NC}                  # Update virus database"
-    echo -e "    ${CYAN}ms quarantine list${NC}         # View quarantine"
     echo -e "    ${CYAN}ms help${NC}                    # Show help"
     echo ""
     
     # Shell completions info
-    echo "  Shell completions:"
+    echo -e "  ${GRAY}Shell completions (optional):${NC}"
     echo ""
     echo -e "    ${GRAY}Bash:${NC} source ~/.config/macscan/completions/macscan.bash"
     echo -e "    ${GRAY}Zsh:${NC}  fpath=(~/.config/macscan/completions \$fpath)"
     echo ""
-    
-    # ClamAV reminder
-    if ! command -v clamscan &> /dev/null; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Don't forget to install ClamAV:"
-        echo ""
-        echo -e "    ${CYAN}brew install clamav${NC}"
-        echo -e "    ${CYAN}ms update${NC}"
-        echo ""
-    fi
 }
 
 # =============================================================================
@@ -460,6 +523,9 @@ show_success() {
 # =============================================================================
 
 main() {
+    # Clear terminal for clean look
+    clear
+    
     echo ""
     echo -e "  ${BOLD}${CYAN}🛡️  MacScan Installer${NC}"
     echo -e "  ${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

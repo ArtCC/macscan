@@ -35,8 +35,10 @@ build_exclusion_args() {
         done < "$WHITELIST_FILE"
     fi
     
-    # Return the array elements
-    printf '%s\n' "${exclude_args[@]}"
+    # Return the array elements (handle empty array)
+    if [[ ${#exclude_args[@]} -gt 0 ]]; then
+        printf '%s\n' "${exclude_args[@]}"
+    fi
 }
 
 # Check if path is whitelisted
@@ -247,7 +249,9 @@ scan_directory() {
     while IFS= read -r line; do
         [[ -n "$line" ]] && exclusions+=("$line")
     done < <(build_exclusion_args)
-    clam_opts+=("${exclusions[@]}")
+    if [[ ${#exclusions[@]} -gt 0 ]]; then
+        clam_opts+=("${exclusions[@]}")
+    fi
     
     # Count total files for progress
     local total_files
@@ -347,51 +351,81 @@ quick_scan() {
         [[ -n "$line" ]] && exclusions+=("$line")
     done < <(build_exclusion_args)
     
+    hide_cursor
+    
     for path in "${DEFAULT_SCAN_PATHS[@]}"; do
         if [[ -d "$path" ]]; then
-            echo -e "  ${CYAN}${ICON_FOLDER}${NC} ${path}"
-            
-            # Count files that will actually be scanned (with max-depth=2)
+            # Count files in directory
             local file_count
-            file_count=$(find "$path" -maxdepth 2 -type f 2>/dev/null | wc -l | tr -d ' ')
+            file_count=$(find "$path" -type f 2>/dev/null | wc -l | tr -d ' ')
             
-            # Scan with limited depth for quick scan, including whitelist exclusions
-            local -a quick_opts=("--no-summary" "--infected" "-r" "--max-depth=2")
-            quick_opts+=("${exclusions[@]}")
+            # Show what we're scanning
+            echo -e "  ${CYAN}${ICON_FOLDER}${NC} ${path} ${GRAY}(${file_count} files)${NC}"
+            # Print 2 empty lines for progress area
+            echo ""
+            echo ""
             
-            local output
-            output=$(clamscan "${quick_opts[@]}" "$path" 2>&1)
+            # Scan directory with whitelist exclusions
+            local -a quick_opts=("--no-summary" "-r")
+            if [[ ${#exclusions[@]} -gt 0 ]]; then
+                quick_opts+=("${exclusions[@]}")
+            fi
             
-            # Count actual scanned files from output
-            local scanned_in_path
-            scanned_in_path=$(echo "$output" | grep -c "^Scanning" || echo "0")
-            scanned_files=$((scanned_files + scanned_in_path))
+            # Parse output while showing progress
+            local path_threats=0
+            local files_in_path=0
+            local max_display=50  # Max chars to show for filename
+            local spin_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
             
-            # Parse threats
+            # Process clamscan output in real-time
+            # Format: /path/to/file: OK or /path/to/file: VirusName FOUND
             while IFS= read -r line; do
-                if [[ "$line" =~ ^(.*):\ (.*)\ FOUND$ ]]; then
-                    local infected_file="${BASH_REMATCH[1]}"
-                    local virus_name="${BASH_REMATCH[2]}"
-                    infected_files+=("$infected_file|$virus_name")
-                    ((total_threats++))
+                if [[ "$line" =~ ^(.+):\ (.+)$ ]]; then
+                    local file_path="${BASH_REMATCH[1]}"
+                    local status="${BASH_REMATCH[2]}"
+                    ((files_in_path++))
+                    
+                    # Get spinner char
+                    local spin_char="${spin_chars:files_in_path%${#spin_chars}:1}"
+                    
+                    # Show current file being scanned
+                    local display_file="${file_path##*/}"
+                    if [[ ${#display_file} -gt $max_display ]]; then
+                        display_file="${display_file:0:$max_display}..."
+                    fi
+                    
+                    # Move up 2 lines, print spinner line with clear
+                    printf "\033[2A\033[K"
+                    printf "     ${CYAN}%s${NC} Scanning... ${GRAY}[%d/%d]${NC}\n" "$spin_char" "$files_in_path" "$file_count"
+                    # Print file line with clear
+                    printf "\033[K     ${GRAY}%s${NC}\n" "$display_file"
+                    
+                    # Check if infected
+                    if [[ "$status" == *"FOUND" ]]; then
+                        local virus_name="${status% FOUND}"
+                        infected_files+=("$file_path|$virus_name")
+                        ((total_threats++))
+                        ((path_threats++))
+                    fi
                 fi
-            done <<< "$output"
+            done < <(clamscan "${quick_opts[@]}" "$path" 2>&1)
             
+            scanned_files=$((scanned_files + files_in_path))
             total_files=$((total_files + file_count))
             
-            if [[ $total_threats -gt 0 ]]; then
-                local path_threats
-                path_threats=$(echo "$output" | grep -c "FOUND$" || echo "0")
-                if [[ $path_threats -gt 0 ]]; then
-                    echo -e "     ${RED}${path_threats} threat(s) found${NC}"
-                else
-                    echo -e "     ${GREEN}Clean${NC}"
-                fi
+            # Clear the 2 progress lines and show result
+            printf "\033[2A\033[K"
+            if [[ $path_threats -gt 0 ]]; then
+                printf "     ${RED}✗ ${path_threats} threat(s) found${NC}\n"
             else
-                echo -e "     ${GREEN}Clean${NC}"
+                printf "     ${GREEN}✓ Clean${NC} ${GRAY}(${files_in_path} scanned)${NC}\n"
             fi
+            printf "\033[K\n"
+            printf "\r                                                                              \n"
         fi
     done
+    
+    show_cursor
     
     local end_time
     end_time=$(date +%s)
@@ -451,7 +485,9 @@ full_scan() {
         [[ -n "$line" ]] && exclusions+=("$line")
     done < <(build_exclusion_args)
     local -a full_opts=("--no-summary" "--infected" "-r")
-    full_opts+=("${exclusions[@]}")
+    if [[ ${#exclusions[@]} -gt 0 ]]; then
+        full_opts+=("${exclusions[@]}")
+    fi
     
     for path in "${FULL_SCAN_PATHS[@]}"; do
         if [[ -d "$path" ]]; then

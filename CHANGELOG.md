@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-02-02
+
+### Added
+- **ClamAV auto-configuration**: Installer now creates freshclam.conf automatically
+- **Database initialization prompt**: Offers to run `ms update` at end of installation
+- **Improved Quick Scan UI**: Shows folder name, file count, and animated spinner per folder
+
+### Fixed
+- Bash 3.2 compatibility: Fixed `read -t 0.1` (decimals not supported)
+- Fixed menu numbering showing all as "1"
+- Fixed `unbound variable` errors with empty arrays
+- Fixed ClamAV `--max-depth` option not supported
+- Fixed help output showing raw escape codes
+- Fixed installer missing GRAY color variable
+
+### Changed
+- ClamAV is now required (installer exits if user declines)
+- Cleaner installation flow with better prompts
+
 ## [0.0.2] - 2026-02-02
 
 ### Added
@@ -43,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/artcc/macscan/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/artcc/macscan/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/artcc/macscan/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/artcc/macscan/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/artcc/macscan/releases/tag/v0.0.1

@@ -106,66 +106,65 @@ send_notification() {
 
 show_help() {
     print_ascii_banner
-    cat << EOF
-${BOLD}USAGE:${NC}
-    macscan <command> [options]
-    ms <command> [options]
-
-${BOLD}COMMANDS:${NC}
-    scan              Quick scan of common threat locations
-    scan --path       Scan a specific directory
-    scan --full       Full system scan (takes longer)
-    update            Update virus database signatures
-    status            Show system status and last scan info
-    quarantine        Manage quarantined files
-    whitelist         Manage excluded paths
-    remove            Uninstall MacScan
-    help              Show this help message
-    version           Show version information
-    author            Show author information
-
-${BOLD}OPTIONS:${NC}
-    -p, --path <dir>  Specify directory to scan
-    -f, --full        Perform full system scan
-    -v, --verbose     Show detailed output
-    -q, --quiet       Suppress output (for scripts)
-    --dry-run         Show what would be scanned without scanning
-    --no-color        Disable colored output
-    --notify          Send macOS notification on completion
-    --export <file>   Export results to JSON file
-    -h, --help        Show help for a command
-    --version         Show version information
-
-${BOLD}EXAMPLES:${NC}
-    ms scan                    # Quick scan
-    ms scan --path ~/Downloads # Scan specific folder
-    ms scan --full             # Full system scan
-    ms scan --quiet --notify   # Silent scan with notification
-    ms scan --dry-run          # Preview scan paths
-    ms update                  # Update virus signatures
-    ms status                  # Show scan status
-    ms whitelist add ~/safe    # Add path to whitelist
-    ms whitelist list          # View whitelisted paths
-    ms quarantine list         # List quarantined files
-    ms remove                  # Uninstall MacScan
-
-${BOLD}CONFIGURATION:${NC}
-    Config:      ~/.config/macscan/
-    Data:        ~/.local/share/macscan/
-    Logs:        ~/.local/share/macscan/logs/
-    Quarantine:  ~/.local/share/macscan/quarantine/
-
-${BOLD}DISCLAIMER:${NC}
-    MacScan is provided "as is" without warranty of any kind. No antivirus
-    solution can detect 100% of malware. This tool is intended for educational
-    and supplementary security purposes only. It should not replace macOS
-    built-in security features (Gatekeeper, XProtect) or professional security
-    solutions. The authors are not responsible for any damage or data loss.
-    Use at your own risk. Always maintain backups of important data.
-
-For more information, visit: https://github.com/artcc/macscan
-
-EOF
+    echo ""
+    echo -e "${BOLD}USAGE:${NC}"
+    echo "    macscan <command> [options]"
+    echo "    ms <command> [options]"
+    echo ""
+    echo -e "${BOLD}COMMANDS:${NC}"
+    echo "    scan              Quick scan of common threat locations"
+    echo "    scan --path       Scan a specific directory"
+    echo "    scan --full       Full system scan (takes longer)"
+    echo "    update            Update virus database signatures"
+    echo "    status            Show system status and last scan info"
+    echo "    quarantine        Manage quarantined files"
+    echo "    whitelist         Manage excluded paths"
+    echo "    remove            Uninstall MacScan"
+    echo "    help              Show this help message"
+    echo "    version           Show version information"
+    echo "    author            Show author information"
+    echo ""
+    echo -e "${BOLD}OPTIONS:${NC}"
+    echo "    -p, --path <dir>  Specify directory to scan"
+    echo "    -f, --full        Perform full system scan"
+    echo "    -v, --verbose     Show detailed output"
+    echo "    -q, --quiet       Suppress output (for scripts)"
+    echo "    --dry-run         Show what would be scanned without scanning"
+    echo "    --no-color        Disable colored output"
+    echo "    --notify          Send macOS notification on completion"
+    echo "    --export <file>   Export results to JSON file"
+    echo "    -h, --help        Show help for a command"
+    echo "    --version         Show version information"
+    echo ""
+    echo -e "${BOLD}EXAMPLES:${NC}"
+    echo "    ms scan                    # Quick scan"
+    echo "    ms scan --path ~/Downloads # Scan specific folder"
+    echo "    ms scan --full             # Full system scan"
+    echo "    ms scan --quiet --notify   # Silent scan with notification"
+    echo "    ms scan --dry-run          # Preview scan paths"
+    echo "    ms update                  # Update virus signatures"
+    echo "    ms status                  # Show scan status"
+    echo "    ms whitelist add ~/safe    # Add path to whitelist"
+    echo "    ms whitelist list          # View whitelisted paths"
+    echo "    ms quarantine list         # List quarantined files"
+    echo "    ms remove                  # Uninstall MacScan"
+    echo ""
+    echo -e "${BOLD}CONFIGURATION:${NC}"
+    echo "    Config:      ~/.config/macscan/"
+    echo "    Data:        ~/.local/share/macscan/"
+    echo "    Logs:        ~/.local/share/macscan/logs/"
+    echo "    Quarantine:  ~/.local/share/macscan/quarantine/"
+    echo ""
+    echo -e "${BOLD}DISCLAIMER:${NC}"
+    echo "    MacScan is provided \"as is\" without warranty of any kind. No antivirus"
+    echo "    solution can detect 100% of malware. This tool is intended for educational"
+    echo "    and supplementary security purposes only. It should not replace macOS"
+    echo "    built-in security features (Gatekeeper, XProtect) or professional security"
+    echo "    solutions. The authors are not responsible for any damage or data loss."
+    echo "    Use at your own risk. Always maintain backups of important data."
+    echo ""
+    echo "For more information, visit: https://github.com/artcc/macscan"
+    echo ""
 }
 
 show_version() {
@@ -1119,11 +1118,12 @@ draw_menu() {
         local label="${option%%|*}"
         local rest="${option#*|}"
         local desc="${rest%%|*}"
+        local num=$((i + 1))
         
         if [[ $i -eq $selected ]]; then
-            echo -e "  ${GREEN}▶ ${i+1}. ${BOLD}${label}${NC}    ${GRAY}${desc}${NC}"
+            echo -e "  ${GREEN}▶ ${num}. ${BOLD}${label}${NC}    ${GRAY}${desc}${NC}"
         else
-            echo -e "    ${i+1}. ${label}    ${GRAY}${desc}${NC}"
+            echo -e "    ${num}. ${label}    ${GRAY}${desc}${NC}"
         fi
         ((i++))
     done
@@ -1154,7 +1154,7 @@ show_interactive_menu() {
         case "$key" in
             # Arrow keys (escape sequences)
             $'\x1b')
-                read -rsn2 -t 0.1 key
+                read -rsn2 -t 1 key
                 case "$key" in
                     '[A') # Up arrow
                         ((selected--))
