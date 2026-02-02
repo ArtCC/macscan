@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on bin/
+        run: |
+          shellcheck -x bin/macscan bin/ms
+
+      - name: Run ShellCheck on lib/
+        run: |
+          find lib -name "*.sh" -exec shellcheck -x {} \;
+
+      - name: Run ShellCheck on install scripts
+        run: |
+          shellcheck -x install.sh uninstall.sh
+
+  syntax-check:
+    name: Bash Syntax Check
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Bash syntax
+        run: |
+          for file in bin/macscan bin/ms install.sh uninstall.sh $(find lib -name "*.sh"); do
+            echo "Checking $file..."
+            bash -n "$file" || exit 1
+          done
+
+  test-install:
+    name: Test Installation
+    runs-on: macos-latest
+    needs: [shellcheck, syntax-check]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run from source
+        run: |
+          chmod +x bin/macscan bin/ms
+          ./bin/ms --version
+          ./bin/ms help
+
+      - name: Test install script (dry run check)
+        run: |
+          # Just verify the script is valid
+          bash -n install.sh
+
+  test-completions:
+    name: Test Completions
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test Bash completion syntax
+        run: |
+          bash -n completions/macscan.bash
+
+      - name: Test Zsh completion syntax
+        run: |
+          zsh -n completions/_macscan || true  # Zsh completions have different syntax

@@ -1,0 +1,58 @@
+#compdef macscan ms
+# MacScan - Zsh completion script
+# Add to ~/.zshrc: fpath=(/path/to/macscan/completions $fpath)
+
+_macscan() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '1: :->command' \
+        '*:: :->args'
+
+    case $state in
+        command)
+            local commands=(
+                'scan:Scan for malware'
+                'update:Update virus database'
+                'status:Show system status'
+                'quarantine:Manage quarantined files'
+                'remove:Uninstall MacScan'
+                'help:Show help information'
+                'version:Show version'
+            )
+            _describe 'command' commands
+            ;;
+        args)
+            case $words[1] in
+                scan)
+                    _arguments \
+                        '(-p --path)'{-p,--path}'[Scan specific directory]:directory:_files -/' \
+                        '(-f --full)'{-f,--full}'[Full system scan]' \
+                        '(-v --verbose)'{-v,--verbose}'[Verbose output]' \
+                        '(-q --quiet)'{-q,--quiet}'[Suppress output]' \
+                        '--dry-run[Show what would be scanned]' \
+                        '--no-color[Disable colored output]' \
+                        '--notify[Send macOS notification]' \
+                        '--export[Export results to JSON]:file:_files -g "*.json"' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                quarantine)
+                    local actions=(
+                        'list:List quarantined files'
+                        'restore:Restore a quarantined file'
+                        'delete:Delete a quarantined file'
+                        'clean:Delete all quarantined files'
+                        'help:Show help'
+                    )
+                    _describe 'action' actions
+                    ;;
+                update|status|remove|help|version)
+                    _arguments '--help[Show help]'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_macscan "$@"

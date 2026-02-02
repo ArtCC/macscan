@@ -1,0 +1,9 @@
+#!/bin/bash
+# MacScan - Short alias for macscan command
+# This is a convenience wrapper
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Execute the main macscan script with all arguments
+exec "${SCRIPT_DIR}/macscan" "$@"

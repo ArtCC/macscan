@@ -1,0 +1,879 @@
+#!/bin/bash
+# MacScan - Command-line malware scanner for macOS
+# Main entry point
+
+set -euo pipefail
+
+# =============================================================================
+# Script Setup
+# =============================================================================
+
+# Get the real path of the script (resolving symlinks)
+get_script_dir() {
+    local source="${BASH_SOURCE[0]}"
+    while [[ -L "$source" ]]; do
+        local dir
+        dir="$(cd -P "$(dirname "$source")" && pwd)"
+        source="$(readlink "$source")"
+        [[ "$source" != /* ]] && source="$dir/$source"
+    done
+    cd -P "$(dirname "$source")" && pwd
+}
+
+# Determine script location (installed or development)
+SCRIPT_DIR="$(get_script_dir)"
+
+# Check if running from installed location or development
+if [[ -f "${SCRIPT_DIR}/../lib/core/common.sh" ]]; then
+    # Development mode - running from repo
+    LIB_DIR="${SCRIPT_DIR}/../lib"
+elif [[ -f "${HOME}/.config/macscan/lib/core/common.sh" ]]; then
+    # Installed mode
+    LIB_DIR="${HOME}/.config/macscan/lib"
+else
+    echo "Error: Cannot find MacScan libraries" >&2
+    echo "Please reinstall MacScan or run from the source directory" >&2
+    exit 1
+fi
+
+# =============================================================================
+# Source Dependencies
+# =============================================================================
+
+source "${LIB_DIR}/core/common.sh"
+source "${LIB_DIR}/ui/spinner.sh"
+source "${LIB_DIR}/ui/progress.sh"
+source "${LIB_DIR}/scan/clamav.sh"
+
+# =============================================================================
+# Global Options
+# =============================================================================
+
+QUIET_MODE=0
+NO_COLOR=0
+DRY_RUN=0
+NOTIFY=0
+EXPORT_JSON=""
+
+# Apply no-color mode if requested
+apply_no_color() {
+    if [[ $NO_COLOR -eq 1 ]]; then
+        RED=''; GREEN=''; YELLOW=''; BLUE=''; PURPLE=''; CYAN=''
+        WHITE=''; GRAY=''; BOLD=''; NC=''
+        BOLD_RED=''; BOLD_GREEN=''; BOLD_YELLOW=''; BOLD_BLUE=''
+        BOLD_PURPLE=''; BOLD_CYAN=''; BG_RED=''; BG_GREEN=''
+        BG_YELLOW=''; BG_BLUE=''
+    fi
+}
+
+# Quiet output wrapper
+qlog() {
+    [[ $QUIET_MODE -eq 0 ]] && echo -e "$@"
+}
+
+# Send macOS notification
+send_notification() {
+    local title="$1"
+    local message="$2"
+    local sound="${3:-default}"
+    
+    if [[ $NOTIFY -eq 1 ]]; then
+        osascript -e "display notification \"$message\" with title \"$title\" sound name \"$sound\"" 2>/dev/null || true
+    fi
+}
+
+# =============================================================================
+# Help and Usage
+# =============================================================================
+
+show_help() {
+    cat << EOF
+
+${BOLD}${MACSCAN_NAME}${NC} v${MACSCAN_VERSION} - ${MACSCAN_DESCRIPTION}
+
+${BOLD}USAGE:${NC}
+    macscan <command> [options]
+    ms <command> [options]
+
+${BOLD}COMMANDS:${NC}
+    scan              Quick scan of common threat locations
+    scan --path       Scan a specific directory
+    scan --full       Full system scan (takes longer)
+    update            Update virus database signatures
+    status            Show system status and last scan info
+    quarantine        Manage quarantined files
+    remove            Uninstall MacScan
+    help              Show this help message
+    version           Show version information
+
+${BOLD}OPTIONS:${NC}
+    -p, --path <dir>  Specify directory to scan
+    -f, --full        Perform full system scan
+    -v, --verbose     Show detailed output
+    -q, --quiet       Suppress output (for scripts)
+    --dry-run         Show what would be scanned without scanning
+    --no-color        Disable colored output
+    --notify          Send macOS notification on completion
+    --export <file>   Export results to JSON file
+    -h, --help        Show help for a command
+    --version         Show version information
+
+${BOLD}EXAMPLES:${NC}
+    ms scan                    # Quick scan
+    ms scan --path ~/Downloads # Scan specific folder
+    ms scan --full             # Full system scan
+    ms scan --quiet --notify   # Silent scan with notification
+    ms scan --dry-run          # Preview scan paths
+    ms update                  # Update virus signatures
+    ms status                  # Show scan status
+    ms quarantine list         # List quarantined files
+    ms remove                  # Uninstall MacScan
+
+${BOLD}CONFIGURATION:${NC}
+    Config:      ~/.config/macscan/
+    Data:        ~/.local/share/macscan/
+    Logs:        ~/.local/share/macscan/logs/
+    Quarantine:  ~/.local/share/macscan/quarantine/
+
+For more information, visit: https://github.com/your-username/macscan
+
+EOF
+}
+
+show_version() {
+    echo ""
+    echo -e "  ${BOLD}${MACSCAN_NAME}${NC} v${MACSCAN_VERSION}"
+    echo -e "  ${GRAY}${MACSCAN_DESCRIPTION}${NC}"
+    echo ""
+    echo -e "  ${GRAY}ClamAV: $(get_clamav_version)${NC}"
+    echo ""
+}
+
+# =============================================================================
+# Path Validation
+# =============================================================================
+
+# Validate and sanitize a path
+validate_path() {
+    local path="$1"
+    
+    # Expand ~ to home directory
+    path="${path/#\~/$HOME}"
+    
+    # Resolve to absolute path
+    if [[ -e "$path" ]]; then
+        path="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
+    fi
+    
+    # Security: prevent path traversal attacks
+    case "$path" in
+        *../*|*/..*)
+            log_error "Invalid path: contains '..'"
+            return 1
+            ;;
+    esac
+    
+    # Check dangerous paths
+    case "$path" in
+        /|/System|/System/*|/usr|/bin|/sbin|/private|/private/*)
+            log_warning "Scanning system directories may require elevated privileges"
+            ;;
+    esac
+    
+    echo "$path"
+    return 0
+}
+
+# =============================================================================
+# Commands
+# =============================================================================
+
+cmd_scan() {
+    local path=""
+    local full=0
+    local verbose=0
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--path)
+                if [[ -n "${2:-}" ]]; then
+                    path="$2"
+                    shift 2
+                else
+                    log_error "Missing path argument"
+                    exit 1
+                fi
+                ;;
+            -f|--full)
+                full=1
+                shift
+                ;;
+            -v|--verbose)
+                verbose=1
+                shift
+                ;;
+            -q|--quiet)
+                QUIET_MODE=1
+                shift
+                ;;
+            --dry-run)
+                DRY_RUN=1
+                shift
+                ;;
+            --no-color)
+                NO_COLOR=1
+                apply_no_color
+                shift
+                ;;
+            --notify)
+                NOTIFY=1
+                shift
+                ;;
+            --export)
+                if [[ -n "${2:-}" ]]; then
+                    EXPORT_JSON="$2"
+                    shift 2
+                else
+                    log_error "Missing export file argument"
+                    exit 1
+                fi
+                ;;
+            -h|--help)
+                echo ""
+                echo "Usage: ms scan [options]"
+                echo ""
+                echo "Options:"
+                echo "  -p, --path <dir>   Scan specific directory"
+                echo "  -f, --full         Full system scan"
+                echo "  -v, --verbose      Verbose output"
+                echo "  -q, --quiet        Suppress output"
+                echo "  --dry-run          Show what would be scanned"
+                echo "  --no-color         Disable colors"
+                echo "  --notify           Send macOS notification on completion"
+                echo "  --export <file>    Export results to JSON"
+                echo ""
+                exit 0
+                ;;
+            *)
+                # Check if it's a path
+                if [[ -e "$1" ]]; then
+                    path="$1"
+                else
+                    log_error "Unknown option: $1"
+                    exit 1
+                fi
+                shift
+                ;;
+        esac
+    done
+    
+    # Validate path if provided
+    if [[ -n "$path" ]]; then
+        path=$(validate_path "$path") || exit 1
+        if [[ ! -e "$path" ]]; then
+            log_error "Path does not exist: $path"
+            exit 1
+        fi
+    fi
+    
+    # Check if database is outdated (more than 7 days)
+    check_db_age
+    
+    # Ensure directories exist
+    ensure_directories
+    
+    # Dry run mode - just show what would be scanned
+    if [[ $DRY_RUN -eq 1 ]]; then
+        show_dry_run "$path" "$full"
+        return 0
+    fi
+    
+    # Determine scan type and run
+    local result=0
+    if [[ $full -eq 1 ]]; then
+        full_scan "$verbose" || result=$?
+    elif [[ -n "$path" ]]; then
+        scan_directory "$path" "$verbose" || result=$?
+    else
+        quick_scan "$verbose" || result=$?
+    fi
+    
+    # Send notification if requested
+    if [[ $NOTIFY -eq 1 ]]; then
+        if [[ $result -eq 0 ]]; then
+            send_notification "MacScan" "Scan complete - No threats found" "Glass"
+        else
+            send_notification "MacScan" "Scan complete - Threats detected!" "Basso"
+        fi
+    fi
+    
+    return $result
+}
+
+# Show dry run info
+show_dry_run() {
+    local path="$1"
+    local full="$2"
+    
+    print_banner
+    echo ""
+    echo -e "  ${BOLD}${YELLOW}DRY RUN${NC} - No actual scanning will be performed"
+    echo ""
+    
+    echo -e "  ${BOLD}Scan paths:${NC}"
+    echo ""
+    
+    if [[ $full -eq 1 ]]; then
+        for p in "${FULL_SCAN_PATHS[@]}"; do
+            if [[ -d "$p" ]]; then
+                local count
+                count=$(count_files "$p")
+                echo -e "  ${CYAN}${ICON_FOLDER}${NC} $p ${GRAY}(~$count files)${NC}"
+            fi
+        done
+    elif [[ -n "$path" ]]; then
+        if [[ -e "$path" ]]; then
+            local count
+            count=$(count_files "$path")
+            echo -e "  ${CYAN}${ICON_FOLDER}${NC} $path ${GRAY}(~$count files)${NC}"
+        fi
+    else
+        for p in "${DEFAULT_SCAN_PATHS[@]}"; do
+            if [[ -d "$p" ]]; then
+                local count
+                count=$(find "$p" -maxdepth 2 -type f 2>/dev/null | wc -l | tr -d ' ')
+                echo -e "  ${CYAN}${ICON_FOLDER}${NC} $p ${GRAY}(~$count files, depth 2)${NC}"
+            fi
+        done
+    fi
+    
+    # Show whitelist if exists
+    if [[ -f "$WHITELIST_FILE" ]] && [[ -s "$WHITELIST_FILE" ]]; then
+        echo ""
+        echo -e "  ${BOLD}Excluded paths (whitelist):${NC}"
+        echo ""
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+            echo -e "  ${GRAY}${ICON_ARROW}${NC} $line"
+        done < "$WHITELIST_FILE"
+    fi
+    
+    echo ""
+    print_line 45
+    echo ""
+}
+
+# Check database age and warn if outdated
+check_db_age() {
+    if [[ $QUIET_MODE -eq 1 ]]; then
+        return 0
+    fi
+    
+    if ! is_clamav_db_ready; then
+        return 0
+    fi
+    
+    local latest
+    latest=$(ls -t "$CLAMAV_DB_PATH"/*.cvd 2>/dev/null | head -n1)
+    
+    if [[ -n "$latest" ]]; then
+        local mod_time
+        mod_time=$(stat -f "%m" "$latest" 2>/dev/null)
+        local now
+        now=$(date +%s)
+        local age_days=$(( (now - mod_time) / 86400 ))
+        
+        if [[ $age_days -gt 7 ]]; then
+            log_warning "Virus database is $age_days days old. Run 'ms update' to update."
+            echo ""
+        fi
+    fi
+}
+
+cmd_update() {
+    ensure_directories
+    update_database
+}
+
+cmd_status() {
+    print_banner
+    echo ""
+    
+    # System info
+    echo -e "  ${BOLD}System Status${NC}"
+    echo ""
+    
+    # ClamAV status
+    if is_clamav_installed; then
+        log_success "ClamAV installed"
+        echo -e "     ${GRAY}$(get_clamav_version)${NC}"
+    else
+        log_error "ClamAV not installed"
+        echo -e "     ${GRAY}Install with: brew install clamav${NC}"
+    fi
+    
+    echo ""
+    
+    # Database status
+    if is_clamav_db_ready; then
+        log_success "Virus database ready"
+        echo -e "     ${GRAY}$(get_db_info)${NC}"
+    else
+        log_warning "Virus database not initialized"
+        echo -e "     ${GRAY}Run: ms update${NC}"
+    fi
+    
+    echo ""
+    
+    # Last scan info
+    echo -e "  ${BOLD}Last Scan${NC}"
+    echo ""
+    
+    if [[ -f "$LAST_SCAN_FILE" ]]; then
+        while IFS='=' read -r key value; do
+            case "$key" in
+                timestamp)
+                    echo -e "  ${GRAY}Date:${NC} $value"
+                    ;;
+                path)
+                    echo -e "  ${GRAY}Path:${NC} $value"
+                    ;;
+                files_scanned)
+                    echo -e "  ${GRAY}Files:${NC} $value"
+                    ;;
+                threats_found)
+                    if [[ "$value" == "0" ]]; then
+                        echo -e "  ${GRAY}Threats:${NC} ${GREEN}$value${NC}"
+                    else
+                        echo -e "  ${GRAY}Threats:${NC} ${RED}$value${NC}"
+                    fi
+                    ;;
+                duration)
+                    echo -e "  ${GRAY}Duration:${NC} $(format_duration "$value")"
+                    ;;
+            esac
+        done < "$LAST_SCAN_FILE"
+    else
+        echo -e "  ${GRAY}No previous scans found${NC}"
+    fi
+    
+    echo ""
+    print_line 45
+    echo ""
+}
+
+# =============================================================================
+# Quarantine Command
+# =============================================================================
+
+cmd_quarantine() {
+    local action="${1:-list}"
+    shift 2>/dev/null || true
+    
+    case "$action" in
+        list)
+            quarantine_list
+            ;;
+        restore)
+            if [[ -z "${1:-}" ]]; then
+                log_error "Missing file ID. Usage: ms quarantine restore <id>"
+                exit 1
+            fi
+            quarantine_restore "$1"
+            ;;
+        delete)
+            if [[ -z "${1:-}" ]]; then
+                log_error "Missing file ID. Usage: ms quarantine delete <id>"
+                exit 1
+            fi
+            quarantine_delete "$1"
+            ;;
+        clean)
+            quarantine_clean
+            ;;
+        -h|--help|help)
+            echo ""
+            echo "Usage: ms quarantine <action> [options]"
+            echo ""
+            echo "Actions:"
+            echo "  list              List quarantined files (default)"
+            echo "  restore <id>      Restore a quarantined file"
+            echo "  delete <id>       Permanently delete a quarantined file"
+            echo "  clean             Delete all quarantined files"
+            echo ""
+            ;;
+        *)
+            log_error "Unknown quarantine action: $action"
+            echo "Run 'ms quarantine help' for usage"
+            exit 1
+            ;;
+    esac
+}
+
+# List quarantined files
+quarantine_list() {
+    print_banner
+    echo ""
+    echo -e "  ${BOLD}Quarantined Files${NC}"
+    echo ""
+    
+    if [[ ! -d "$QUARANTINE_DIR" ]] || [[ -z "$(ls -A "$QUARANTINE_DIR" 2>/dev/null)" ]]; then
+        echo -e "  ${GRAY}No files in quarantine${NC}"
+        echo ""
+        return 0
+    fi
+    
+    local index=1
+    local manifest="$QUARANTINE_DIR/.manifest"
+    
+    if [[ -f "$manifest" ]]; then
+        while IFS='|' read -r id orig_path virus_name date; do
+            local quarantined_file="$QUARANTINE_DIR/$id"
+            if [[ -f "$quarantined_file" ]]; then
+                echo -e "  ${YELLOW}[$index]${NC} ${RED}$virus_name${NC}"
+                echo -e "      ${GRAY}Original:${NC} $orig_path"
+                echo -e "      ${GRAY}Date:${NC} $date"
+                echo -e "      ${GRAY}ID:${NC} $id"
+                echo ""
+                ((index++))
+            fi
+        done < "$manifest"
+    else
+        for file in "$QUARANTINE_DIR"/*; do
+            [[ -f "$file" ]] || continue
+            local filename
+            filename=$(basename "$file")
+            echo -e "  ${YELLOW}[$index]${NC} $filename"
+            ((index++))
+        done
+    fi
+    
+    print_line 45
+    echo ""
+}
+
+# Restore a quarantined file
+quarantine_restore() {
+    local file_id="$1"
+    local manifest="$QUARANTINE_DIR/.manifest"
+    
+    if [[ ! -f "$manifest" ]]; then
+        log_error "Quarantine manifest not found"
+        return 1
+    fi
+    
+    local found=0
+    while IFS='|' read -r id orig_path virus_name date; do
+        if [[ "$id" == "$file_id" ]]; then
+            found=1
+            local quarantined_file="$QUARANTINE_DIR/$id"
+            
+            if [[ ! -f "$quarantined_file" ]]; then
+                log_error "Quarantined file not found: $id"
+                return 1
+            fi
+            
+            log_warning "This file was quarantined because it was detected as: $virus_name"
+            echo -e "  ${GRAY}Original location:${NC} $orig_path"
+            echo ""
+            read -r -p "  Are you sure you want to restore this file? [y/N] " response
+            
+            if [[ "$response" =~ ^[yY]$ ]]; then
+                local orig_dir
+                orig_dir=$(dirname "$orig_path")
+                mkdir -p "$orig_dir" 2>/dev/null
+                
+                if mv "$quarantined_file" "$orig_path"; then
+                    # Remove from manifest
+                    grep -v "^$id|" "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
+                    log_success "File restored to: $orig_path"
+                else
+                    log_error "Failed to restore file"
+                    return 1
+                fi
+            else
+                log_info "Restore cancelled"
+            fi
+            break
+        fi
+    done < "$manifest"
+    
+    if [[ $found -eq 0 ]]; then
+        log_error "File ID not found: $file_id"
+        return 1
+    fi
+}
+
+# Delete a quarantined file
+quarantine_delete() {
+    local file_id="$1"
+    local quarantined_file="$QUARANTINE_DIR/$file_id"
+    local manifest="$QUARANTINE_DIR/.manifest"
+    
+    if [[ ! -f "$quarantined_file" ]]; then
+        log_error "File not found in quarantine: $file_id"
+        return 1
+    fi
+    
+    read -r -p "  Permanently delete this file? [y/N] " response
+    
+    if [[ "$response" =~ ^[yY]$ ]]; then
+        if rm -f "$quarantined_file"; then
+            # Remove from manifest
+            if [[ -f "$manifest" ]]; then
+                grep -v "^$file_id|" "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
+            fi
+            log_success "File permanently deleted"
+        else
+            log_error "Failed to delete file"
+            return 1
+        fi
+    else
+        log_info "Delete cancelled"
+    fi
+}
+
+# Clean all quarantined files
+quarantine_clean() {
+    if [[ ! -d "$QUARANTINE_DIR" ]] || [[ -z "$(ls -A "$QUARANTINE_DIR" 2>/dev/null)" ]]; then
+        log_info "Quarantine is already empty"
+        return 0
+    fi
+    
+    # Validate quarantine directory
+    if [[ -z "$QUARANTINE_DIR" || "$QUARANTINE_DIR" != *"macscan"* ]]; then
+        log_error "Invalid quarantine directory configuration"
+        return 1
+    fi
+    
+    local count
+    count=$(find "$QUARANTINE_DIR" -type f ! -name ".manifest" | wc -l | tr -d ' ')
+    
+    echo ""
+    log_warning "This will permanently delete $count quarantined file(s)"
+    echo -e "  ${GRAY}Directory:${NC} $QUARANTINE_DIR"
+    echo ""
+    read -r -p "  Are you sure? [y/N] " response
+    
+    if [[ ! "$response" =~ ^[yY]$ ]]; then
+        log_info "Clean cancelled"
+        return 0
+    fi
+    
+    # Second confirmation for safety
+    read -r -p "  Type 'DELETE' to confirm permanent deletion: " confirm_text
+    
+    if [[ "$confirm_text" != "DELETE" ]]; then
+        log_info "Clean cancelled - confirmation text did not match"
+        return 0
+    fi
+    
+    rm -rf "${QUARANTINE_DIR:?}"/*
+    log_success "Quarantine cleaned"
+}
+
+# Move file to quarantine
+quarantine_file() {
+    local file_path="$1"
+    local virus_name="${2:-Unknown}"
+    local auto_confirm="${3:-0}"
+    
+    # Always ask for confirmation unless explicitly auto-confirmed
+    if [[ $auto_confirm -ne 1 ]]; then
+        echo ""
+        log_warning "Infected file detected: $file_path"
+        echo -e "  ${GRAY}Threat:${NC} ${RED}$virus_name${NC}"
+        echo ""
+        read -r -p "  Move this file to quarantine? [y/N] " response
+        
+        if [[ ! "$response" =~ ^[yY]$ ]]; then
+            log_info "File left in place: $file_path"
+            return 0
+        fi
+    fi
+    
+    ensure_directories
+    
+    local file_id
+    file_id=$(date +%s)_$(basename "$file_path" | tr ' ' '_')
+    local dest="$QUARANTINE_DIR/$file_id"
+    local manifest="$QUARANTINE_DIR/.manifest"
+    
+    # Validate destination directory
+    if [[ -z "$QUARANTINE_DIR" || "$QUARANTINE_DIR" != *"macscan"* ]]; then
+        log_error "Invalid quarantine directory configuration"
+        return 1
+    fi
+    
+    if mv "$file_path" "$dest"; then
+        chmod 000 "$dest"  # Remove all permissions
+        echo "$file_id|$file_path|$virus_name|$(date '+%Y-%m-%d %H:%M:%S')" >> "$manifest"
+        log_success "File quarantined: $file_path"
+        return 0
+    else
+        log_error "Failed to quarantine file: $file_path"
+        return 1
+    fi
+}
+
+# =============================================================================
+# Remove Command
+# =============================================================================
+
+cmd_remove() {
+    echo ""
+    echo -e "  ${BOLD}${RED}🛡️  MacScan Uninstaller${NC}"
+    echo -e "  ${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    echo "  This will remove:"
+    echo ""
+    echo -e "  ${GRAY}•${NC} ${INSTALL_DIR}/macscan"
+    echo -e "  ${GRAY}•${NC} ${INSTALL_DIR}/ms"
+    echo -e "  ${GRAY}•${NC} ${CONFIG_DIR}"
+    echo -e "  ${GRAY}•${NC} ${DATA_DIR}"
+    echo -e "  ${GRAY}•${NC} ${CACHE_DIR}"
+    echo ""
+    
+    read -r -p "  Are you sure you want to uninstall MacScan? [y/N] " response
+    
+    if [[ ! "$response" =~ ^[yY]$ ]]; then
+        echo ""
+        log_info "Uninstall cancelled"
+        return 0
+    fi
+    
+    echo ""
+    echo -e "${BOLD}Removing MacScan...${NC}"
+    echo ""
+    
+    # Needs sudo check
+    local needs_sudo=0
+    [[ -e "$INSTALL_DIR" ]] && [[ ! -w "$INSTALL_DIR" ]] && needs_sudo=1
+    
+    if [[ $needs_sudo -eq 1 ]]; then
+        log_info "Admin access required for ${INSTALL_DIR}"
+    fi
+    
+    # Remove binaries
+    if [[ -f "${INSTALL_DIR}/macscan" ]]; then
+        if [[ $needs_sudo -eq 1 ]]; then
+            sudo rm -f "${INSTALL_DIR}/macscan" && log_success "Removed macscan"
+        else
+            rm -f "${INSTALL_DIR}/macscan" && log_success "Removed macscan"
+        fi
+    fi
+    
+    if [[ -f "${INSTALL_DIR}/ms" ]]; then
+        if [[ $needs_sudo -eq 1 ]]; then
+            sudo rm -f "${INSTALL_DIR}/ms" && log_success "Removed ms"
+        else
+            rm -f "${INSTALL_DIR}/ms" && log_success "Removed ms"
+        fi
+    fi
+    
+    # Remove directories with validation
+    if [[ -d "$CONFIG_DIR" ]]; then
+        if [[ -z "$CONFIG_DIR" || "$CONFIG_DIR" != *"macscan"* ]]; then
+            log_error "Invalid config directory, skipping"
+        else
+            read -r -p "  Remove configuration directory ($CONFIG_DIR)? [y/N] " response
+            if [[ "$response" =~ ^[yY]$ ]]; then
+                rm -rf "$CONFIG_DIR" && log_success "Removed $CONFIG_DIR"
+            else
+                log_info "Kept $CONFIG_DIR"
+            fi
+        fi
+    fi
+    
+    if [[ -d "$DATA_DIR" ]]; then
+        if [[ -z "$DATA_DIR" || "$DATA_DIR" != *"macscan"* ]]; then
+            log_error "Invalid data directory, skipping"
+        else
+            read -r -p "  Remove data directory ($DATA_DIR)? [y/N] " response
+            if [[ "$response" =~ ^[yY]$ ]]; then
+                rm -rf "$DATA_DIR" && log_success "Removed $DATA_DIR"
+            else
+                log_info "Kept $DATA_DIR"
+            fi
+        fi
+    fi
+    
+    if [[ -d "$CACHE_DIR" ]]; then
+        if [[ -z "$CACHE_DIR" || "$CACHE_DIR" != *"macscan"* ]]; then
+            log_error "Invalid cache directory, skipping"
+        else
+            read -r -p "  Remove cache directory ($CACHE_DIR)? [y/N] " response
+            if [[ "$response" =~ ^[yY]$ ]]; then
+                rm -rf "$CACHE_DIR" && log_success "Removed $CACHE_DIR"
+            else
+                log_info "Kept $CACHE_DIR"
+            fi
+        fi
+    fi
+    
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}${ICON_SUCCESS}${NC} ${BOLD}MacScan has been uninstalled${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  ${GRAY}ClamAV was not removed. To remove it:${NC}"
+    echo -e "  ${CYAN}brew uninstall clamav${NC}"
+    echo ""
+}
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+main() {
+    # Check if running on macOS
+    if ! is_macos; then
+        log_error "MacScan is designed for macOS only"
+        exit 1
+    fi
+    
+    # No arguments - show help
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+    
+    # Parse command
+    local command="$1"
+    shift
+    
+    case "$command" in
+        scan)
+            cmd_scan "$@"
+            ;;
+        update)
+            cmd_update "$@"
+            ;;
+        status)
+            cmd_status "$@"
+            ;;
+        quarantine)
+            cmd_quarantine "$@"
+            ;;
+        remove|uninstall)
+            cmd_remove "$@"
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        version|--version|-V)
+            show_version
+            ;;
+        *)
+            log_error "Unknown command: $command"
+            echo ""
+            echo "Run 'ms help' for usage information"
+            exit 1
+            ;;
+    esac
+}
+
+# Run main
+main "$@"
