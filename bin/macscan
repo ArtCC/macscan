@@ -374,8 +374,9 @@ check_db_age() {
         return 0
     fi
     
+    # Use find instead of ls to handle filenames properly (SC2012)
     local latest
-    latest=$(ls -t "$CLAMAV_DB_PATH"/*.cvd 2>/dev/null | head -n1)
+    latest=$(find "$CLAMAV_DB_PATH" -maxdepth 1 -name "*.cvd" -type f -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -n1)
     
     if [[ -n "$latest" ]]; then
         local mod_time
@@ -563,6 +564,10 @@ quarantine_restore() {
         return 1
     fi
     
+    # Read manifest into memory to avoid SC2094 (read/write same file in pipeline)
+    local manifest_content
+    manifest_content=$(cat "$manifest")
+    
     local found=0
     while IFS='|' read -r id orig_path virus_name date; do
         if [[ "$id" == "$file_id" ]]; then
@@ -585,8 +590,8 @@ quarantine_restore() {
                 mkdir -p "$orig_dir" 2>/dev/null
                 
                 if mv "$quarantined_file" "$orig_path"; then
-                    # Remove from manifest
-                    grep -v "^$id|" "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
+                    # Remove from manifest (write new content)
+                    echo "$manifest_content" | grep -v "^$id|" > "$manifest"
                     log_success "File restored to: $orig_path"
                 else
                     log_error "Failed to restore file"
@@ -597,7 +602,7 @@ quarantine_restore() {
             fi
             break
         fi
-    done < "$manifest"
+    done <<< "$manifest_content"
     
     if [[ $found -eq 0 ]]; then
         log_error "File ID not found: $file_id"
@@ -620,9 +625,11 @@ quarantine_delete() {
     
     if [[ "$response" =~ ^[yY]$ ]]; then
         if rm -f "$quarantined_file"; then
-            # Remove from manifest
+            # Remove from manifest (avoid temp file)
             if [[ -f "$manifest" ]]; then
-                grep -v "^$file_id|" "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
+                local manifest_content
+                manifest_content=$(cat "$manifest")
+                echo "$manifest_content" | grep -v "^$file_id|" > "$manifest"
             fi
             log_success "File permanently deleted"
         else

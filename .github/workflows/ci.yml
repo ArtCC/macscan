@@ -19,15 +19,17 @@ jobs:
 
       - name: Run ShellCheck on bin/
         run: |
-          shellcheck -x bin/macscan bin/ms
+          # SC1091: Ignore "not following" errors for sourced files (they exist but shellcheck can't find them in CI)
+          # SC2034: Ignore "unused variable" for color variables (they're used after being sourced)
+          shellcheck -x -e SC1091,SC2034 bin/macscan bin/ms
 
       - name: Run ShellCheck on lib/
         run: |
-          find lib -name "*.sh" -exec shellcheck -x {} \;
+          find lib -name "*.sh" -exec shellcheck -x -e SC1091,SC2034 {} \;
 
       - name: Run ShellCheck on install scripts
         run: |
-          shellcheck -x install.sh uninstall.sh
+          shellcheck -x -e SC1091,SC2034 install.sh uninstall.sh
 
   syntax-check:
     name: Bash Syntax Check
