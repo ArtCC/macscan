@@ -322,12 +322,9 @@ This will remove:
 - [x] Interactive TUI menu
 
 ### Phase 3 - Advanced
-- [ ] Homebrew tap
-- [ ] Scheduled scans (launchd)
-- [ ] VirusTotal API integration
-- [ ] YARA rules integration
 - [ ] macOS-specific malware hashes (Objective-See)
-- [ ] Community rule contributions
+- [ ] Scheduled scans (launchd)
+- [ ] Homebrew
 
 ## 🤝 Contributing
 
