@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-macOS-blue?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/Version-0.0.3-orange?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.0.4-orange?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Shell-Bash-lightgrey?style=flat-square" alt="Shell">
   <img src="https://img.shields.io/github/actions/workflow/status/artcc/macscan/ci.yml?style=flat-square&label=CI" alt="CI">
 </p>
@@ -96,6 +96,11 @@ ms whitelist add ~/safe-folder
 ms quarantine list
 ms quarantine restore <id>
 
+# Schedule automatic scans
+ms schedule daily 22:00
+ms schedule weekly monday 03:00
+ms schedule list
+
 # Uninstall MacScan
 ms remove
 
@@ -150,6 +155,7 @@ This opens a TUI with arrow key navigation:
 | `ms status` | Show system status and last scan info |
 | `ms quarantine` | Manage quarantined files |
 | `ms whitelist` | Manage excluded paths |
+| `ms schedule` | Schedule automatic scans |
 | `ms remove` | Uninstall MacScan |
 | `ms help` | Show help information |
 | `ms version` | Show version information |
@@ -236,6 +242,33 @@ MacScan automatically warns you if the virus database is older than 7 days befor
 ms update
 ```
 
+### Scheduled Scans
+
+Schedule automatic scans to run in the background using macOS's native launchd system:
+
+```bash
+# Schedule a daily scan at 10 PM
+ms schedule daily 22:00
+
+# Schedule a weekly scan every Monday at 3 AM
+ms schedule weekly monday 03:00
+
+# View current schedule
+ms schedule list
+
+# Remove scheduled scan
+ms schedule remove
+```
+
+**Features:**
+- Runs quietly in the background (`--quiet --notify`)
+- Sends macOS notification when complete
+- Logs available at `/tmp/macscan-scheduled.log`
+- Survives system reboots
+- Only one schedule allowed at a time
+
+**Supported days:** monday, tuesday, wednesday, thursday, friday, saturday, sunday
+
 ## 🧪 Development
 
 ### Project Structure
@@ -320,10 +353,7 @@ This will remove:
 - [x] Signal handling (Ctrl+C safety)
 - [x] GitHub Actions CI
 - [x] Interactive TUI menu
-
-### Phase 3 - Advanced
-- [ ] Scheduled scans (launchd)
-- [ ] Homebrew
+- [x] Scheduled scans (launchd)
 
 ## 🤝 Contributing
 

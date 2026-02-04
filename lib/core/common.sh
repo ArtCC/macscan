@@ -10,7 +10,7 @@ readonly _MACSCAN_COMMON_LOADED=1
 # Version and App Info
 # =============================================================================
 
-readonly MACSCAN_VERSION="0.0.3"
+readonly MACSCAN_VERSION="0.0.4"
 readonly MACSCAN_NAME="MacScan"
 readonly MACSCAN_DESCRIPTION="Command-line malware scanner for macOS"
 

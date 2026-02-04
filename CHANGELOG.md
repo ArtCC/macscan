@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-02-04
+
+### Added
+- **Scheduled scans**: New `ms schedule` command to automate scans using launchd
+  - Schedule daily scans: `ms schedule daily HH:MM`
+  - Schedule weekly scans: `ms schedule weekly <day> HH:MM`
+  - View current schedule: `ms schedule list`
+  - Remove schedule: `ms schedule remove`
+  - Runs quietly in background with macOS notifications
+- Bash and Zsh completions for `schedule` command
+
+### Fixed
+- Use PlistBuddy instead of defaults read for better plist parsing
+
 ## [0.0.3] - 2026-02-02
 
 ### Added

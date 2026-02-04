@@ -9,7 +9,7 @@ _macscan_completions() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     
     # Main commands
-    commands="scan update status quarantine whitelist remove help version author"
+    commands="scan update status quarantine whitelist schedule remove help version author"
     
     # Global options
     global_opts="--help --version"
@@ -22,6 +22,12 @@ _macscan_completions() {
     
     # Quarantine actions
     quarantine_actions="list restore delete clean help"
+    
+    # Schedule actions
+    schedule_actions="list daily weekly remove help"
+    
+    # Days for weekly schedule
+    schedule_days="monday tuesday wednesday thursday friday saturday sunday"
     
     # Complete based on position
     case "${COMP_WORDS[1]}" in
@@ -55,6 +61,15 @@ _macscan_completions() {
                 return 0
             elif [[ ${COMP_CWORD} -eq 3 ]] && [[ "$prev" == "add" || "$prev" == "remove" ]]; then
                 COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            ;;
+        schedule)
+            if [[ ${COMP_CWORD} -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$schedule_actions" -- "$cur") )
+                return 0
+            elif [[ ${COMP_CWORD} -eq 3 ]] && [[ "$prev" == "weekly" ]]; then
+                COMPREPLY=( $(compgen -W "$schedule_days" -- "$cur") )
                 return 0
             fi
             ;;

@@ -18,6 +18,7 @@ _macscan() {
                 'status:Show system status'
                 'quarantine:Manage quarantined files'
                 'whitelist:Manage excluded paths'
+                'schedule:Schedule automatic scans'
                 'remove:Uninstall MacScan'
                 'help:Show help information'
                 'version:Show version'
@@ -58,6 +59,29 @@ _macscan() {
                         'help:Show help'
                     )
                     _describe 'action' actions
+                    ;;
+                schedule)
+                    local actions=(
+                        'list:Show current scheduled scan'
+                        'daily:Schedule daily scan'
+                        'weekly:Schedule weekly scan'
+                        'remove:Remove scheduled scan'
+                        'help:Show help'
+                    )
+                    if [[ $words[2] == "weekly" ]]; then
+                        local days=(
+                            'monday:Schedule on Monday'
+                            'tuesday:Schedule on Tuesday'
+                            'wednesday:Schedule on Wednesday'
+                            'thursday:Schedule on Thursday'
+                            'friday:Schedule on Friday'
+                            'saturday:Schedule on Saturday'
+                            'sunday:Schedule on Sunday'
+                        )
+                        _describe 'day' days
+                    else
+                        _describe 'action' actions
+                    fi
                     ;;
                 update|status|remove|help|version|author)
                     _arguments '--help[Show help]'
