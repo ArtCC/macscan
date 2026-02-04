@@ -322,7 +322,6 @@ This will remove:
 - [x] Interactive TUI menu
 
 ### Phase 3 - Advanced
-- [ ] macOS-specific malware hashes (Objective-See)
 - [ ] Scheduled scans (launchd)
 - [ ] Homebrew
 
