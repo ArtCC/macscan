@@ -139,6 +139,7 @@ This opens a TUI with arrow key navigation:
     5. Status        Show system status and last scan
     6. Quarantine    Manage quarantined files
     7. Whitelist     Manage excluded paths
+    8. Schedule      Schedule automatic scans
 
   ─────────────────────────────────────────────
   ↑↓ Navigate  Enter Select  H Help  V Version  A Author  Q Quit

@@ -1414,6 +1414,7 @@ declare -a MENU_OPTIONS=(
     "Status|Show system status and last scan|cmd_status"
     "Quarantine|Manage quarantined files|cmd_quarantine_menu"
     "Whitelist|Manage excluded paths|cmd_whitelist_menu"
+    "Schedule|Schedule automatic scans|cmd_schedule_menu"
 )
 
 # Menu wrapper functions
@@ -1455,6 +1456,10 @@ cmd_quarantine_menu() {
 
 cmd_whitelist_menu() {
     cmd_whitelist list
+}
+
+cmd_schedule_menu() {
+    cmd_schedule list
 }
 
 # Draw menu
